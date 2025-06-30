@@ -20,7 +20,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -78,7 +78,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -2144,7 +2144,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -2320,7 +2320,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -2466,7 +2466,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -4486,7 +4486,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -4952,7 +4952,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -5026,7 +5026,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -11854,7 +11854,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -11982,7 +11982,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -19062,7 +19062,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -20730,7 +20730,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -23698,7 +23698,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -27468,7 +27468,7 @@
             "weekOffset": 0
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -32976,7 +32976,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0
@@ -34432,7 +34432,7 @@
             "weekOffset": 1
           },
           "green": {
-            "name": "Green Waste",
+            "name": "Green",
             "color": "#16a34a",
             "interval": 1,
             "weekOffset": 0

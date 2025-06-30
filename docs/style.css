@@ -943,16 +943,16 @@ input:focus {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 185px;
-  height: 220px;
+  width: 100px;
+  height: 160px;
   margin: 0 auto;
 }
 
 .bin-icon::before {
   content: '';
   display: block;
-  width: 185px;
-  height: 220px;
+  width: 100px;
+  height: 160px;
   background-image: url('js/bin.svg');
   background-size: contain;
   background-repeat: no-repeat;
