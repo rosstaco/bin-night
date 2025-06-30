@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bin Collection Zones GeoJSON Schema",
+  "description": "Schema for zones.geojson file containing bin collection zone polygons with embedded collection data",
+  "type": "object",
+  "required": ["type", "features"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["FeatureCollection"]
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/zoneFeature"
+      }
+    }
+  },
+  "definitions": {
+    "zoneFeature": {
+      "type": "object",
+      "required": ["type", "properties", "geometry"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["Feature"]
+        },
+        "properties": {
+          "$ref": "#/definitions/zoneProperties"
+        },
+        "geometry": {
+          "$ref": "#/definitions/polygon"
+        }
+      }
+    },
+    "zoneProperties": {
+      "type": "object",
+      "required": ["zone", "collectionDay", "bins"],
+      "properties": {
+        "zone": {
+          "type": "string",
+          "description": "Zone identifier (e.g., 'A1', 'B2', 'E13')",
+          "pattern": "^[A-Z]\\d+$"
+        },
+        "collectionDay": {
+          "type": "integer",
+          "description": "Day of the week for collection (1=Monday, 2=Tuesday, ..., 7=Sunday)",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "bins": {
+          "type": "object",
+          "description": "Configuration for each bin type in this zone",
+          "patternProperties": {
+            "^[a-z]+$": {
+              "$ref": "#/definitions/binConfig"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "binConfig": {
+      "type": "object",
+      "required": ["name", "color", "interval", "weekOffset"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name for the bin type (e.g., 'Rubbish', 'Recycling')"
+        },
+        "color": {
+          "type": "string",
+          "description": "CSS color value for displaying the bin (e.g., '#dc2626', '#eab308')",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "interval": {
+          "type": "integer",
+          "description": "Collection frequency in weeks (1=weekly, 2=fortnightly)",
+          "minimum": 1
+        },
+        "weekOffset": {
+          "type": "integer",
+          "description": "Week offset from the reference start date",
+          "minimum": 0
+        },
+        "icon": {
+          "type": "string",
+          "description": "Optional emoji or icon for the bin type"
+        }
+      }
+    },
+    "polygon": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["Polygon"]
+        },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 4
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

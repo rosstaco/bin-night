@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bin Nights - Collection Reminder</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗑️</text></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>🗑️ Bin Nights</h1>
+            <div class="header-controls">
+                <div class="theme-toggle-container">
+                    <label class="theme-toggle">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="theme-slider"></span>
+                    </label>
+                </div>
+                <button id="addressSelectionBtn" class="address-selection-btn" title="Address Selection">📍</button>
+            </div>
+            <div class="location-info" id="locationInfo">Detecting location...</div>
+        </header>
+
+        <main class="main-content">
+            <div class="next-collection" id="nextCollection">
+                <div class="collection-time">Loading...</div>
+                <div class="collection-date"></div>
+            </div>
+
+            <div class="bins-container" id="binsContainer">
+                <!-- Bins will be dynamically populated -->
+            </div>
+
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <p>Unable to determine your location.</p>
+            </div>
+            </div>
+
+        </main>
+
+        <footer class="app-footer">
+            <div class="refresh-info">
+                <span id="lastUpdate">Updated: --:--</span>
+                <button id="refreshBtn" class="btn-icon" title="Refresh">🔄</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Address Selection Modal -->
+    <div class="modal" id="addressSelectionModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Choose Your Location Method</h2>
+                <button id="closeAddressSelectionBtn" class="btn-icon">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="location-options">
+                    <div class="option-card">
+                        <div class="option-icon">📍</div>
+                        <h3>Use GPS</h3>
+                        <p>Automatically detect your location</p>
+                        <button id="useGpsBtn" class="btn-primary"><span>Use GPS</span></button>
+                    </div>
+                    <div class="option-divider">or</div>
+                    <div class="option-card">
+                        <div class="option-icon">🏠</div>
+                        <h3>Enter Address</h3>
+                        <p>Find your zone by entering your address</p>
+                        <button id="enterAddressBtn" class="btn-secondary">Enter Address</button>
+                    </div>
+                </div>
+                
+                <!-- Address input section (initially hidden) -->
+                <div class="address-input-section" id="addressInputSection" style="display: none;">
+                    <div class="address-autocomplete">
+                        <input type="text" id="addressInput" placeholder="Enter your address (e.g., 123 Main St, Bendigo VIC)" class="address-input" autocomplete="off">
+                        <div id="autocompleteDropdown" class="autocomplete-dropdown" style="display: none;"></div>
+                    </div>
+                    <div class="address-actions">
+                        <button id="lookupAddressBtn" class="btn-primary">Find My Zone</button>
+                        <button id="backToOptionsBtn" class="btn-secondary">Back</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="https://unpkg.com/moment@2.29.4/moment.js"></script>
+    <script src="https://unpkg.com/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
+    <script src="js/date-utils.js"></script>
+    <script src="js/geo.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

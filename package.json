@@ -1,0 +1,40 @@
+{
+  "name": "bin-nights-app",
+  "version": "1.0.0",
+  "description": "A GPS-based bin collection reminder app",
+  "main": "docs/index.html",
+  "scripts": {
+    "start": "cd docs && python3 -m http.server 8080",
+    "dev": "cd docs && python3 -m http.server 8080",
+    "test": "node tools/test-moment.js",
+    "convert-shz": "node tools/convert-shz.js",
+    "build": "echo 'No build step required - static files only'",
+    "deploy": "echo 'Deploy docs/ folder to GitHub Pages or static hosting'"
+  },
+  "keywords": [
+    "bin",
+    "garbage",
+    "collection",
+    "reminder",
+    "gps",
+    "location",
+    "scheduling",
+    "waste-management"
+  ],
+  "author": "Bin Nights App",
+  "license": "MIT",
+  "dependencies": {
+    "moment": "^2.30.1",
+    "moment-timezone": "^0.6.0",
+    "node-fetch": "^3.3.2",
+    "shapefile": "^0.6.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/username/bin-nights-app.git"
+  },
+  "homepage": "https://username.github.io/bin-nights-app/",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
