@@ -1,17 +1,18 @@
 // Service Worker for Bin Nights PWA
-const CACHE_VERSION = '2.0.0'; // Update this version when you want to force cache refresh
+const CACHE_VERSION = '2.0.1'; // Update this version when you want to force cache refresh
 const CACHE_NAME = `bin-nights-v${CACHE_VERSION}`;
+const BASE_PATH = '/bin-nights';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/js/app.js',
-  '/js/geo.js',
-  '/js/date-utils.js',
-  '/manifest.json',
-  '/icons/icon.svg',
-  '/data/bendigo/config.json',
-  '/data/bendigo/zones.geojson'
+  `${BASE_PATH}/`,
+  `${BASE_PATH}/index.html`,
+  `${BASE_PATH}/style.css`,
+  `${BASE_PATH}/js/app.js`,
+  `${BASE_PATH}/js/geo.js`,
+  `${BASE_PATH}/js/date-utils.js`,
+  `${BASE_PATH}/manifest.json`,
+  `${BASE_PATH}/icons/icon.svg`,
+  `${BASE_PATH}/data/bendigo/config.json`,
+  `${BASE_PATH}/data/bendigo/zones.geojson`
 ];
 
 // Install event - cache resources
