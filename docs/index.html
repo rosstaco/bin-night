@@ -123,7 +123,9 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/bin-nights/sw.js', {
+                    scope: '/bin-nights/'
+                })
                     .then((registration) => {
                         console.log('SW registered: ', registration);
                         
