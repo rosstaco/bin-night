@@ -2,15 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bin Nights - Collection Reminder</title>
+    <meta name="description" content="Never miss your bin collection day again. Get reminders for rubbish, recycling, and green waste collection.">
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Theme and Status Bar -->
+    <meta name="theme-color" content="#16a34a">
+    <meta name="msapplication-TileColor" content="#16a34a">
+    <meta name="msapplication-navbutton-color" content="#16a34a">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
+    <!-- Web App Capabilities -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Bin Nights">
+    
+    <!-- Icons -->
+    <link rel="icon" href="icons/icon.png" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/icon.png">
+    <link rel="mask-icon" href="icons/icon.png" color="#16a34a">
+    
+    <!-- Fallback favicon -->
+    <link rel="icon" href="icons/icon.png">
+    
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗑️</text></svg>">
 </head>
 <body>
     <div class="app-container">
         <header class="app-header">
-            <h1>🗑️ Bin Nights</h1>
+            <h1>Bin Nights</h1>
             <div class="header-controls">
                 <div class="theme-toggle-container">
                     <label class="theme-toggle">
@@ -52,7 +76,7 @@
     <div class="modal" id="addressSelectionModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Choose Your Location Method</h2>
+                <h3>Find Your Location</h3>
                 <button id="closeAddressSelectionBtn" class="btn-icon">✕</button>
             </div>
             <div class="modal-body">
@@ -94,5 +118,46 @@
     <script src="js/date-utils.js"></script>
     <script src="js/geo.js"></script>
     <script src="js/app.js"></script>
+    
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                        
+                        // Check for updates periodically
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            console.log('New service worker installing...');
+                            
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // New version available, show notification
+                                    console.log('New version available! Refresh to update.');
+                                    
+                                    // Optionally show a notification to the user
+                                    if ('Notification' in window && Notification.permission === 'granted') {
+                                        new Notification('Bin Nights Update', {
+                                            body: 'A new version is available. Refresh to update.',
+                                            icon: '/icons/icon.svg'
+                                        });
+                                    }
+                                }
+                            });
+                        });
+                        
+                        // Check for updates every 60 seconds
+                        setInterval(() => {
+                            registration.update();
+                        }, 60000);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

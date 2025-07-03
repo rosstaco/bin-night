@@ -5,6 +5,38 @@
     box-sizing: border-box;
 }
 
+/* PWA and Safe Area Support */
+@supports (padding: env(safe-area-inset-top)) {
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+}
+
+/* Standalone mode adjustments */
+@media (display-mode: standalone) {
+    body {
+        /* Prevent bounce scrolling on iOS */
+        overscroll-behavior: none;
+    }
+    
+    .app-container {
+        /* Ensure full height in standalone mode */
+        min-height: 100vh;
+        min-height: 100dvh; /* Dynamic viewport height for modern browsers */
+    }
+}
+
+/* Prevent text selection on UI elements */
+.app-header, .bins-container, .app-footer {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
 :root {
     /* Light theme colors */
     --bg-primary: #ffffff;
@@ -658,7 +690,6 @@ body {
 .location-options {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     margin-bottom: 2rem;
 }
 
@@ -699,15 +730,9 @@ body {
     text-align: center;
     color: var(--text-muted);
     font-weight: 500;
-    margin: 0.5rem 0;
+    margin: 0.1rem 0;
 }
 
-/* Address Input Section */
-.address-input-section {
-    border-top: 1px solid var(--border-color);
-    padding-top: 1.5rem;
-    margin-top: 1.5rem;
-}
 
 .address-actions {
     display: flex;
@@ -835,10 +860,7 @@ body {
     .location-options {
         flex-direction: column;
     }
-    
-    .option-card {
-        margin-bottom: 1rem;
-    }
+
     
     .address-actions {
         flex-direction: column;

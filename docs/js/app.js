@@ -55,7 +55,7 @@ class BinNightsApp {
       this.setupEventListeners();
 
       // Load cached data first
-      this.loadFromCache();
+      const cacheLoaded = this.loadFromCache();
 
       // Apply saved settings
       this.applySavedSettings();
@@ -74,12 +74,7 @@ class BinNightsApp {
         this.hasDisplayedLocation = true; // Mark that we've shown location info
       }
 
-      // Try to get location and update data (but don't block the UI)
-      this.getCurrentLocationAndUpdate().catch((error) => {
-        // Location detection failed, but app can still work with manual zone selection
-      });
-
-      // If no cached data and location fails, show address selection modal after a delay
+      // If no cached data, show address selection modal after a delay
       setTimeout(() => {
         // Only show modal if we haven't successfully displayed any location data
         if (!this.hasDisplayedLocation) {
@@ -294,14 +289,32 @@ class BinNightsApp {
     // Clear existing bins
     container.innerHTML = "";
 
-    // Create bins using the new binStates structure
-    Object.entries(this.currentZoneFeature?.properties?.bins || {}).forEach(
-      ([binType, binConfig]) => {
-        const binState = status.binStates[binType] || { isActive: false };
-        const binEl = this.createBinElement(binType, binConfig, binState);
-        container.appendChild(binEl);
+    // Define preferred order with green bin first
+    const binOrder = ['green', 'rubbish', 'recycling'];
+    
+    // Get all bin entries and sort them
+    const binEntries = Object.entries(this.currentZoneFeature?.properties?.bins || {});
+    const sortedBinEntries = binEntries.sort(([binTypeA], [binTypeB]) => {
+      const indexA = binOrder.indexOf(binTypeA);
+      const indexB = binOrder.indexOf(binTypeB);
+      
+      // If both bins are in the order array, sort by their position
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
       }
-    );
+      // If only one is in the order array, prioritize it
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      // If neither is in the order array, maintain original order
+      return 0;
+    });
+
+    // Create bins using the sorted order
+    sortedBinEntries.forEach(([binType, binConfig]) => {
+      const binState = status.binStates[binType] || { isActive: false };
+      const binEl = this.createBinElement(binType, binConfig, binState);
+      container.appendChild(binEl);
+    });
   }
 
   /**
@@ -1012,18 +1025,24 @@ class BinNightsApp {
    */
   saveToCache() {
     try {
+      // Extract only essential data from zoneFeature to reduce cache size
+      const simplifiedZoneData = this.currentZoneFeature ? {
+        zone: this.currentZoneFeature.properties.zone,
+        collectionDay: this.currentZoneFeature.properties.collectionDay,
+        bins: this.currentZoneFeature.properties.bins
+      } : null;
+
       const cacheData = {
         city: this.currentCity,
         zone: this.currentZone,
-        zoneFeature: this.currentZoneFeature,
+        zoneData: simplifiedZoneData, // Simplified instead of full zoneFeature
         config: this.config,
-        zones: this.zones,
         lastUpdate: this.lastUpdate,
         timestamp: Date.now(),
       };
 
       localStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
-      console.log("💾 Data saved to cache");
+      console.log("💾 Data saved to cache (simplified)");
     } catch (error) {
       console.warn("Failed to save to cache:", error);
     }
@@ -1049,19 +1068,34 @@ class BinNightsApp {
 
       this.currentCity = data.city;
       this.currentZone = data.zone;
-      this.currentZoneFeature = data.zoneFeature;
       this.config = data.config;
-      this.zones = data.zones;
       this.lastUpdate = data.lastUpdate ? new Date(data.lastUpdate) : null;
 
-      // If we don't have a zoneFeature but have zone data, try to find it
-      if (!this.currentZoneFeature && this.currentZone && this.zones) {
-        this.currentZoneFeature = this.zones.features.find(
-          (feature) => feature.properties.zone === this.currentZone
-        );
+      // Reconstruct currentZoneFeature from simplified zoneData or handle old format
+      if (data.zoneData) {
+        // New simplified cache format
+        this.currentZoneFeature = {
+          type: "Feature",
+          properties: {
+            zone: data.zoneData.zone,
+            collectionDay: data.zoneData.collectionDay,
+            bins: data.zoneData.bins
+          },
+          geometry: null // We don't need the geometry for bin scheduling
+        };
+      } else if (data.zoneFeature) {
+        // Old cache format - use existing zoneFeature but convert to new format
+        this.currentZoneFeature = data.zoneFeature;
+        // Convert to new format and re-save to reduce cache size
+        this.saveToCache();
+      } else {
+        this.currentZoneFeature = null;
       }
 
-      console.log("📦 Data loaded from cache:", {
+      // We no longer store the full zones GeoJSON in cache
+      this.zones = null;
+
+      console.log("📦 Data loaded from cache (simplified):", {
         city: this.currentCity,
         zone: this.currentZone,
       });
