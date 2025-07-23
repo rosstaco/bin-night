@@ -1,5 +1,5 @@
 // Service Worker for Bin Nights PWA
-const CACHE_VERSION = '2.1.0'; // Update this version when you want to force cache refresh
+const CACHE_VERSION = '2.2.0'; // Update this version when you want to force cache refresh
 const CACHE_NAME = `bin-nights-v${CACHE_VERSION}`;
 
 // Determine the base path dynamically from the service worker's own URL
@@ -19,6 +19,14 @@ const urlsToCache = [
   `${BASE_PATH}/js/app.js`,
   `${BASE_PATH}/js/geo.js`,
   `${BASE_PATH}/js/date-utils.js`,
+  // Manager modules
+  `${BASE_PATH}/js/managers/cache-manager.js`,
+  `${BASE_PATH}/js/managers/location-manager.js`,
+  `${BASE_PATH}/js/managers/bin-display-manager.js`,
+  `${BASE_PATH}/js/managers/ui-manager.js`,
+  `${BASE_PATH}/js/managers/pwa-manager.js`,
+  `${BASE_PATH}/js/managers/autocomplete-manager.js`,
+  // App assets
   `${BASE_PATH}/manifest.json`,
   `${BASE_PATH}/icons/icon.svg`,
   `${BASE_PATH}/icons/icon.png`,
