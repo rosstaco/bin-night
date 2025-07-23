@@ -3,6 +3,7 @@
   "fullName": "City of Greater Bendigo",
   "timezone": "Australia/Melbourne",
   "startDate": "2025-01-06",
+  "collectionCutoffHour": 18,
   "bounds": {
     "description": "Geographic bounds for the City of Greater Bendigo service area",
     "south": -37.2,
