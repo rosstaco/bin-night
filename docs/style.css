@@ -58,6 +58,8 @@
     /* Interactive colors */
     --primary-color: #3b82f6;
     --primary-hover: #2563eb;
+    --accent-color: #16a34a;
+    --accent-hover: #15803d;
     --success-color: #059669;
     --error-color: #dc2626;
 }
@@ -73,6 +75,8 @@
     --border-color: #475569;
     --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+    --accent-color: #22c55e;
+    --accent-hover: #16a34a;
 }
 
 body {
@@ -459,11 +463,13 @@ body {
 /* Footer */
 .app-footer {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0;
+    padding: 0.5rem 1rem;
     border-top: 1px solid var(--border-color);
     margin-top: auto;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .refresh-info {
@@ -472,6 +478,32 @@ body {
     gap: 1rem;
     color: var(--text-muted);
     font-size: 0.9rem;
+}
+
+.install-btn {
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.2);
+}
+
+.install-btn:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.install-btn:active {
+    transform: translateY(0);
 }
 
 /* Modal */
@@ -882,6 +914,15 @@ body {
         flex-direction: column;
         gap: 1rem;
         text-align: center;
+        padding: 1rem;
+    }
+    
+    .install-btn {
+        order: -1; /* Show install button above refresh info on mobile */
+        width: 100%;
+        max-width: 200px;
+        margin: 0 auto;
+        justify-content: center;
     }
 }
 
