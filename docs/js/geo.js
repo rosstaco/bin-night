@@ -149,35 +149,48 @@ function findZone(lat, lng, geoJSON) {
  */
 async function getLocationInfo(lat, lng) {
     try {
-        // Load Bendigo data directly (we only support Bendigo for now)
-        const [zones, config] = await Promise.all([
-            loadCityZones('bendigo'),
-            loadCityConfig('bendigo')
-        ]);
+        // List of supported cities
+        const supportedCities = ['bendigo', 'yarra'];
         
-        // Find zone
-        const zoneFeature = findZone(lat, lng, zones);
-        
-        if (!zoneFeature) {
-            return {
-                success: false,
-                error: 'Location is outside of known Bendigo collection zones. Please check if your address is within the City of Greater Bendigo.',
-                city: 'bendigo',
-                lat,
-                lng
-            };
+        // Try each city to find which one contains this location
+        for (const cityName of supportedCities) {
+            try {
+                const [zones, config] = await Promise.all([
+                    loadCityZones(cityName),
+                    loadCityConfig(cityName)
+                ]);
+                
+                // Find zone in this city
+                const zoneFeature = findZone(lat, lng, zones);
+                
+                if (zoneFeature) {
+                    console.log(`✅ Found location in ${cityName} zone: ${zoneFeature.properties.zone}`);
+                    return {
+                        success: true,
+                        city: cityName,
+                        zone: zoneFeature.properties.zone,
+                        zoneFeature,
+                        lat,
+                        lng,
+                        zones,
+                        config
+                    };
+                }
+                
+                console.log(`📍 Location not found in ${cityName} zones`);
+            } catch (cityError) {
+                console.warn(`⚠️ Error loading data for ${cityName}:`, cityError);
+            }
         }
         
+        // If we get here, location wasn't found in any supported city
         return {
-            success: true,
-            city: 'bendigo',
-            zone: zoneFeature.properties.zone,
-            zoneFeature,
+            success: false,
+            error: 'Location is outside of supported waste collection zones. Currently supported: City of Greater Bendigo and City of Yarra.',
             lat,
-            lng,
-            zones,
-            config
+            lng
         };
+        
     } catch (error) {
         return {
             success: false,
@@ -222,31 +235,9 @@ async function geocodeAddress(address) {
     try {
         console.log('🔍 Geocoding address:', address);
         
-        // Add Bendigo context if not already specified
-        let searchAddress = address;
-        if (!address.toLowerCase().includes('bendigo') && !address.toLowerCase().includes('vic')) {
-            searchAddress = `${address}, Bendigo VIC`;
-        }
-        
-        // Load Bendigo config to get bounds
-        let bendigoBounds;
-        try {
-            const config = await loadCityConfig('bendigo');
-            bendigoBounds = config.bounds;
-        } catch (error) {
-            // Fallback bounds if config can't be loaded
-            bendigoBounds = {
-                south: -37.2,
-                north: -36.4,
-                west: 143.8,
-                east: 144.8
-            };
-        }
-        
-        // Use OpenStreetMap Nominatim API (free) with City of Greater Bendigo bounds
-        const encodedAddress = encodeURIComponent(searchAddress);
-        const bounds = `${bendigoBounds.west},${bendigoBounds.north},${bendigoBounds.east},${bendigoBounds.south}`; // left,top,right,bottom
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1&addressdetails=1&countrycodes=au&viewbox=${bounds}&bounded=1`;
+        // Use OpenStreetMap Nominatim API (free) without geographic bounds restriction
+        const encodedAddress = encodeURIComponent(address);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1&addressdetails=1&countrycodes=au`;
         
         const response = await fetch(url, {
             headers: {
@@ -261,18 +252,12 @@ async function geocodeAddress(address) {
         const results = await response.json();
         
         if (results.length === 0) {
-            throw new Error('Address not found in City of Greater Bendigo area. Please try a more specific address.');
+            throw new Error('Address not found. Please try a more specific address.');
         }
         
         const result = results[0];
         const lat = parseFloat(result.lat);
         const lng = parseFloat(result.lon);
-        
-        // Double-check the result is in City of Greater Bendigo area
-        if (lat < bendigoBounds.south || lat > bendigoBounds.north || 
-            lng < bendigoBounds.west || lng > bendigoBounds.east) {
-            throw new Error('Address found but outside City of Greater Bendigo service area.');
-        }
         
         console.log('✅ Geocoding success:', {
             lat,
@@ -344,24 +329,10 @@ async function searchAddresses(query, limit = 5, signal = null) {
         
         console.log('🔍 Searching addresses for:', query);
         
-        // Load Bendigo config to get bounds
-        let bendigoBounds;
-        try {
-            const config = await loadCityConfig('bendigo');
-            bendigoBounds = config.bounds;
-        } catch (error) {
-            // Fallback bounds if config can't be loaded
-            bendigoBounds = {
-                south: -37.2,
-                north: -36.4,
-                west: 143.8,
-                east: 144.8
-            };
-        }
-        
-        // Use OpenStreetMap Nominatim API for address search with geographic bounds
+        // Use OpenStreetMap Nominatim API for address search without geographic bounds
         const encodedQuery = encodeURIComponent(query);
-        const bounds = `${bendigoBounds.west},${bendigoBounds.north},${bendigoBounds.east},${bendigoBounds.south}`; // left,top,right,bottom
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQuery}&limit=${limit}&addressdetails=1&countrycodes=au`;
+        
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'BinNights/1.0 (Waste Collection Reminder App)'
@@ -375,16 +346,8 @@ async function searchAddresses(query, limit = 5, signal = null) {
         
         const results = await response.json();
         
-        // Filter results to ensure they're in the service area
-        const filteredResults = results.filter(result => {
-            const lat = parseFloat(result.lat);
-            const lng = parseFloat(result.lon);
-            return lat >= bendigoBounds.south && lat <= bendigoBounds.north && 
-                   lng >= bendigoBounds.west && lng <= bendigoBounds.east;
-        });
-        
-        // Format results for display
-        const suggestions = filteredResults.map(result => ({
+        // Convert results to our format (no geographic filtering)
+        const suggestions = results.map(result => ({
             display_name: result.display_name,
             lat: parseFloat(result.lat),
             lng: parseFloat(result.lon),
@@ -394,6 +357,7 @@ async function searchAddresses(query, limit = 5, signal = null) {
         }));
         
         console.log('✅ Address search results:', suggestions.length);
+        
         return suggestions;
         
     } catch (error) {
@@ -403,33 +367,38 @@ async function searchAddresses(query, limit = 5, signal = null) {
 }
 
 /**
- * Test function to check zone finding with coordinates that should be in a zone
+ * Test function to check zone finding with coordinates that should be in zones
  */
 function testZoneFinding() {
-    // Test with coordinates that should be in zone A23 (from our test above)
-    const testLat = -36.7569;
-    const testLng = 144.278;
+    // Test coordinates for both supported cities
+    const testCoords = [
+        { name: 'Bendigo center (should be in A23)', lat: -36.7569, lng: 144.278, expectedCity: 'bendigo' },
+        { name: 'Richmond (Yarra)', lat: -37.82, lng: 145.0, expectedCity: 'yarra' },
+        { name: 'Outside all zones', lat: -38.0, lng: 146.0, expectedCity: null }
+    ];
     
-    console.log('🧪 Testing zone finding...');
-    console.log('📍 Test coordinates:', testLat, testLng, '(should be in A23)');
+    console.log('🧪 Testing zone finding for multiple cities...');
     
-    loadCityZones('bendigo').then(zones => {
-        console.log('✅ Loaded zones successfully:', zones.features.length, 'features');
+    testCoords.forEach(async (coord) => {
+        console.log(`\n📍 Testing ${coord.name}: [${coord.lng}, ${coord.lat}]`);
         
-        // Check zone types
-        const polygonCount = zones.features.filter(f => f.geometry.type === 'Polygon').length;
-        const multiPolygonCount = zones.features.filter(f => f.geometry.type === 'MultiPolygon').length;
-        console.log('📊 Zone types: Polygon:', polygonCount, 'MultiPolygon:', multiPolygonCount);
-        
-        const result = findZone(testLat, testLng, zones);
-        
-        if (result) {
-            console.log('✅ Found zone:', result.properties.zone);
-        } else {
-            console.log('❌ No zone found for test coordinates');
+        try {
+            const result = await getLocationInfo(coord.lat, coord.lng);
+            
+            if (result.success) {
+                console.log(`✅ Found in ${result.city} zone: ${result.zone}`);
+                if (coord.expectedCity && result.city !== coord.expectedCity) {
+                    console.warn(`⚠️ Expected ${coord.expectedCity} but found ${result.city}`);
+                }
+            } else {
+                console.log(`❌ Not found in any zone: ${result.error}`);
+                if (coord.expectedCity) {
+                    console.warn(`⚠️ Expected to find in ${coord.expectedCity}`);
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error testing ${coord.name}:`, error);
         }
-    }).catch(err => {
-        console.error('❌ Failed to load zones:', err);
     });
 }
 

@@ -76,7 +76,7 @@ class BinDisplayManager {
     container.innerHTML = "";
 
     // Define preferred order with green bin first
-    const binOrder = ['green', 'rubbish', 'recycling'];
+    const binOrder = ['green', 'rubbish', 'organics', 'recycling', 'glass'];
     
     // Get all bin entries and sort them
     const binEntries = Object.entries(currentZoneFeature?.properties?.bins || {});
