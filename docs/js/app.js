@@ -4,45 +4,19 @@
 
 class BinNightsApp {
   constructor() {
-    this.currentCity = null;
-    this.currentZone = null;
-    this.currentZoneFeature = null;
-    this.config = null;
-    this.zones = null;
-    this.lastUpdate = null;
-    this.hasDisplayedLocation = false; // Track if we've successfully shown location info
-
-    // PWA install properties
-    this.deferredPrompt = null;
-    this.isInstallable = false;
-
-    // Autocomplete state
-    this.autocompleteTimeout = null;
-    this.selectedSuggestionIndex = -1;
-    this.suggestions = [];
-
-    // Cache key for localStorage
-    this.cacheKey = "binNights";
+    // Initialize managers
+    this.cacheManager = new CacheManager();
+    this.locationManager = new LocationManager();
+    this.binDisplayManager = new BinDisplayManager();
+    this.uiManager = new UIManager();
+    this.pwaManager = new PWAManager();
+    this.autocompleteManager = new AutocompleteManager();
 
     // Bind methods
     this.init = this.init.bind(this);
     this.refreshData = this.refreshData.bind(this);
     this.lookupAddress = this.lookupAddress.bind(this);
-    this.setupAutocomplete = this.setupAutocomplete.bind(this);
-    this.handleAddressInput = this.handleAddressInput.bind(this);
-    this.showSuggestions = this.showSuggestions.bind(this);
-    this.showHelperText = this.showHelperText.bind(this);
-    this.hideSuggestions = this.hideSuggestions.bind(this);
-    this.selectSuggestion = this.selectSuggestion.bind(this);
-    this.handleKeyDown = this.handleKeyDown.bind(this);
-    this.toggleDarkMode = this.toggleDarkMode.bind(this);
-    this.showAddressSelection = this.showAddressSelection.bind(this);
-    this.closeAddressSelectionModal = this.closeAddressSelectionModal.bind(this);
     this.handleUseGps = this.handleUseGps.bind(this);
-    this.showAddressInput = this.showAddressInput.bind(this);
-    this.showLocationOptions = this.showLocationOptions.bind(this);
-    this.handleInstallPrompt = this.handleInstallPrompt.bind(this);
-    this.setupPWAInstall = this.setupPWAInstall.bind(this);
 
     // Initialize when DOM is ready
     if (document.readyState === "loading") {
@@ -60,54 +34,60 @@ class BinNightsApp {
       // Set up event listeners
       this.setupEventListeners();
 
-      // Set up PWA install functionality
-      this.setupPWAInstall();
+      // Set up managers
+      this.uiManager.init();
+      this.pwaManager.setupPWAInstall();
+      this.autocompleteManager.init(this.cacheManager); // Pass cache manager
+      this.autocompleteManager.setupAutocomplete();
 
       // Load cached data first
-      const cacheLoaded = this.loadFromCache();
+      const cacheResult = this.cacheManager.loadFromCache();
 
-      // Apply saved settings
-      this.applySavedSettings();
+      if (cacheResult) {
+        this.locationManager.loadFromCache(cacheResult.data);
+        if (cacheResult.data.lastUpdate) {
+          this.binDisplayManager.setLastUpdate(new Date(cacheResult.data.lastUpdate));
+        }
 
-      // If we have complete cached data (location + geo), show it immediately
-      if (
-        this.currentCity &&
-        this.currentZone &&
-        this.currentZoneFeature &&
-        this.config
-      ) {
-        this.updateLocationInfo(
-          `${this.config.city} Zone ${this.currentZone} (cached)`
-        );
-        this.updateBinDisplay();
-        this.hasDisplayedLocation = true; // Mark that we've shown location info
-      } 
-      // If we have location but missing geo data, refresh geo data
-      else if (this.currentCity && this.currentZone && !this.config) {
-        console.log("📦 Have location, refreshing geo data...");
-        this.updateLocationInfo(`${this.currentCity} Zone ${this.currentZone} (refreshing...)`);
-        this.hasDisplayedLocation = true; // We have location info
-        
-        // Refresh geo data in background
-        try {
-          await this.refreshGeoData();
-        } catch (error) {
-          console.warn("Failed to refresh geo data:", error);
-          // Still show the location, user can manually refresh
-          this.updateLocationInfo(`${this.currentCity} Zone ${this.currentZone} (refresh needed)`);
+        // If we have complete cached data (location + geo), show it immediately
+        if (cacheResult.hasLocationData && cacheResult.hasValidGeoData) {
+          const config = this.locationManager.config;
+          const zone = this.locationManager.currentZone;
+          this.uiManager.updateLocationInfo(`${config.city} Zone ${zone} (cached)`);
+          this.binDisplayManager.updateBinDisplay(
+            this.locationManager.config,
+            this.locationManager.currentZoneFeature
+          );
+          this.uiManager.setLocationDisplayed(true);
+        } 
+        // If we have location but missing geo data, refresh geo data
+        else if (cacheResult.hasLocationData && !cacheResult.hasValidGeoData) {
+          console.log("📦 Have location, refreshing geo data...");
+          const city = this.locationManager.currentCity;
+          const zone = this.locationManager.currentZone;
+          this.uiManager.updateLocationInfo(`${city} Zone ${zone} (refreshing...)`);
+          this.uiManager.setLocationDisplayed(true);
+          
+          // Refresh geo data in background
+          try {
+            await this.locationManager.refreshGeoData();
+            this.updateDisplayAfterLocationChange();
+          } catch (error) {
+            console.warn("Failed to refresh geo data:", error);
+            this.uiManager.updateLocationInfo(`${city} Zone ${zone} (refresh needed)`);
+          }
         }
       }
 
       // If no cached data, show address selection modal after a delay
       setTimeout(() => {
-        // Only show modal if we haven't successfully displayed any location data
-        if (!this.hasDisplayedLocation) {
-          this.showAddressSelection();
+        if (!this.uiManager.getLocationDisplayed()) {
+          this.uiManager.showAddressSelection();
         }
       }, 3000);
     } catch (error) {
       console.error("Error initializing app:", error);
-      this.showError("Failed to initialize app: " + error.message);
+      this.uiManager.showError("Failed to initialize app: " + error.message);
     }
   }
 
@@ -124,13 +104,13 @@ class BinNightsApp {
     // Install button
     const installBtn = document.getElementById("installBtn");
     if (installBtn) {
-      installBtn.addEventListener("click", this.handleInstallPrompt.bind(this));
+      installBtn.addEventListener("click", () => this.pwaManager.handleInstallPrompt());
     }
 
     // Address selection button
     const addressSelectionBtn = document.getElementById("addressSelectionBtn");
     if (addressSelectionBtn) {
-      addressSelectionBtn.addEventListener("click", this.showAddressSelection);
+      addressSelectionBtn.addEventListener("click", () => this.uiManager.showAddressSelection());
     }
 
     // Address lookup
@@ -148,13 +128,13 @@ class BinNightsApp {
     // Enter Address button
     const enterAddressBtn = document.getElementById("enterAddressBtn");
     if (enterAddressBtn) {
-      enterAddressBtn.addEventListener("click", () => this.showAddressInput());
+      enterAddressBtn.addEventListener("click", () => this.uiManager.showAddressInput());
     }
 
     // Back to options button
     const backToOptionsBtn = document.getElementById("backToOptionsBtn");
     if (backToOptionsBtn) {
-      backToOptionsBtn.addEventListener("click", () => this.showLocationOptions());
+      backToOptionsBtn.addEventListener("click", () => this.uiManager.showLocationOptions());
     }
 
     // Allow Enter key in address input
@@ -163,28 +143,26 @@ class BinNightsApp {
       addressInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          if (this.selectedSuggestionIndex >= 0) {
-            this.selectSuggestion(this.selectedSuggestionIndex);
+          const selectedIndex = this.autocompleteManager.getSelectedIndex();
+          if (selectedIndex >= 0) {
+            this.handleAutocompleteSelection(selectedIndex);
           } else {
             this.lookupAddress();
           }
         }
       });
-
-      // Setup autocomplete
-      this.setupAutocomplete();
     }
 
     // Dark mode toggle
     const darkModeToggle = document.getElementById("darkModeToggle");
     if (darkModeToggle) {
-      darkModeToggle.addEventListener("change", this.toggleDarkMode);
+      darkModeToggle.addEventListener("change", () => this.uiManager.toggleDarkMode());
     }
 
     // Address selection modal close button
     const closeAddressSelectionBtn = document.getElementById("closeAddressSelectionBtn");
     if (closeAddressSelectionBtn) {
-      closeAddressSelectionBtn.addEventListener("click", this.closeAddressSelectionModal);
+      closeAddressSelectionBtn.addEventListener("click", () => this.uiManager.closeAddressSelectionModal());
     }
 
     // Close modal when clicking outside
@@ -192,10 +170,79 @@ class BinNightsApp {
     if (addressSelectionModal) {
       addressSelectionModal.addEventListener("click", (e) => {
         if (e.target === addressSelectionModal) {
-          this.closeAddressSelectionModal();
+          this.uiManager.closeAddressSelectionModal();
         }
       });
     }
+
+    // Custom events
+    document.addEventListener('autocompleteSelection', (e) => {
+      this.handleAutocompleteSelection(e.detail.index);
+    });
+
+    document.addEventListener('zoneSelected', (e) => {
+      this.selectZone(e.detail.zone);
+    });
+  }
+
+  /**
+   * Handle autocomplete selection
+   */
+  async handleAutocompleteSelection(index) {
+    await this.autocompleteManager.selectSuggestion(index, async (suggestion) => {
+      try {
+        const locationInfo = await this.locationManager.getLocationFromCoordinates(
+          suggestion.lat,
+          suggestion.lng
+        );
+
+        if (locationInfo.success) {
+          this.updateDisplayAfterLocationChange(suggestion.display_name.split(",")[0]);
+          this.uiManager.closeAddressSelectionModal();
+          this.uiManager.clearAddressInput();
+        } else {
+          this.uiManager.showError(
+            locationInfo.error || "Selected address is not in a supported collection zone."
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error processing selected address:", error);
+        this.uiManager.showError("Error processing selected address: " + error.message);
+      }
+    });
+  }
+
+  /**
+   * Update display after location change
+   */
+  updateDisplayAfterLocationChange(addressPrefix = null) {
+    const config = this.locationManager.config;
+    const zone = this.locationManager.currentZone;
+    
+    let locationText = `${config.city} Zone ${zone}`;
+    if (addressPrefix) {
+      locationText += ` (${addressPrefix})`;
+    }
+    
+    this.uiManager.updateLocationInfo(locationText);
+    this.binDisplayManager.updateBinDisplay(
+      this.locationManager.config,
+      this.locationManager.currentZoneFeature
+    );
+    this.uiManager.setLocationDisplayed(true);
+    this.saveCurrentState();
+    this.uiManager.hideError();
+  }
+
+  /**
+   * Save current state to cache
+   */
+  saveCurrentState() {
+    const stateData = {
+      ...this.locationManager.getStateForCache(),
+      lastUpdate: this.binDisplayManager.getLastUpdate()
+    };
+    this.cacheManager.saveToCache(stateData);
   }
 
   /**
@@ -203,348 +250,69 @@ class BinNightsApp {
    */
   async getCurrentLocationAndUpdate() {
     try {
-      this.updateLocationInfo("Getting your location...");
+      this.uiManager.updateLocationInfo("Getting your location...");
 
-      // Check if geolocation is supported
-      if (!navigator.geolocation) {
-        throw new Error("Geolocation is not supported by this browser");
-      }
-
-      // Try to get current location with better error handling
-      console.log("🔍 Requesting location permission...");
-      const location = await getCurrentLocation();
-      console.log("📍 Location obtained:", location);
-
-      // Get location info (city and zone)
-      this.updateLocationInfo("Finding your collection zone...");
-      const locationInfo = await getLocationInfo(location.lat, location.lng);
-      console.log("🏘️ Location info:", locationInfo);
+      const location = await this.locationManager.getCurrentLocation();
+      
+      this.uiManager.updateLocationInfo("Finding your collection zone...");
+      const locationInfo = await this.locationManager.getLocationFromCoordinates(
+        location.lat, 
+        location.lng
+      );
 
       if (locationInfo.success) {
-        this.currentCity = locationInfo.city;
-        this.currentZone = locationInfo.zone;
-        this.currentZoneFeature = locationInfo.zoneFeature;
-        this.config = locationInfo.config;
-        this.zones = locationInfo.zones;
-
-        // Update UI
-        this.updateLocationInfo(`${this.config.city} Zone ${this.currentZone}`);
-        this.updateBinDisplay();
-        this.hasDisplayedLocation = true; // Mark that we've shown location info
-
-        // Save to cache
-        this.saveToCache();
-
-        // Hide error message if visible
-        this.hideError();
+        this.updateDisplayAfterLocationChange();
       } else {
         console.warn("❌ Location detection failed:", locationInfo.error);
         
         // Try to use cached data if available
-        if (this.currentCity && this.currentZone) {
+        const cacheResult = this.cacheManager.loadFromCache();
+        if (cacheResult && cacheResult.hasLocationData) {
           console.log("📦 Using cached data instead");
-          this.updateBinDisplay();
-          this.hasDisplayedLocation = true; // Mark that we've shown location info
+          this.locationManager.loadFromCache(cacheResult.data);
+          this.updateDisplayAfterLocationChange();
         } else {
-          // Show address selection modal instead of manual zone selector
           console.log("🎯 Showing address selection modal");
-          setTimeout(() => this.showAddressSelection(), 1000);
+          setTimeout(() => this.uiManager.showAddressSelection(), 1000);
         }
       }
     } catch (error) {
       console.error("❌ Location error:", error);
-      let errorMessage = "Unable to get your location: " + error.message;
-
-      // Provide more specific error messages
-      if (error.message.includes("denied")) {
-        errorMessage =
-          "Location permission denied. Please enter your address below to find your collection zone.";
-      } else if (error.message.includes("unavailable")) {
-        errorMessage =
-          "Location services unavailable. Please enter your address below to find your collection zone.";
-      } else if (error.message.includes("timeout")) {
-        errorMessage =
-          "Location request timed out. Please enter your address below to find your collection zone.";
-      } else {
-        errorMessage =
-          "Unable to get your location. Please enter your address below to find your collection zone.";
-      }
+      let errorMessage = this.getLocationErrorMessage(error);
 
       // Try to use cached data first
-      if (this.currentCity && this.currentZone) {
+      const cacheResult = this.cacheManager.loadFromCache();
+      if (cacheResult && cacheResult.hasLocationData) {
         console.log("📦 Using cached data due to location error");
-        this.updateLocationInfo(
-          `${this.config?.city || this.currentCity} Zone ${
-            this.currentZone
-          } (cached)`
+        this.locationManager.loadFromCache(cacheResult.data);
+        const config = this.locationManager.config;
+        const zone = this.locationManager.currentZone;
+        const city = config?.city || this.locationManager.currentCity;
+        this.uiManager.updateLocationInfo(`${city} Zone ${zone} (cached)`);
+        this.binDisplayManager.updateBinDisplay(
+          this.locationManager.config,
+          this.locationManager.currentZoneFeature
         );
-        this.updateBinDisplay();
-        this.hasDisplayedLocation = true; // Mark that we've shown location info
+        this.uiManager.setLocationDisplayed(true);
       } else {
-        // Only show address selection modal if no cached data is available
-        console.log(
-          "🎯 Location error occurred, showing address selection modal"
-        );
-        this.showAddressSelection();
+        console.log("🎯 Location error occurred, showing address selection modal");
+        this.uiManager.showAddressSelection();
       }
     }
   }
 
   /**
-   * Refresh geo data (config and zone features) while keeping location data
+   * Get appropriate error message for location errors
    */
-  async refreshGeoData() {
-    if (!this.currentCity || !this.currentZone) {
-      throw new Error("No location data available to refresh geo data");
-    }
-
-    try {
-      console.log("🔄 Refreshing geo data for", this.currentCity, "zone", this.currentZone);
-      
-      // Load fresh config
-      this.config = await loadCityConfig(this.currentCity);
-      
-      // Load fresh zones data
-      this.zones = await loadCityZones(this.currentCity);
-      
-      // Find the zone feature for our current zone
-      if (this.zones) {
-        this.currentZoneFeature = this.zones.features.find(
-          (feature) => feature.properties.zone === this.currentZone
-        );
-      }
-
-      if (this.currentZoneFeature && this.config) {
-        // Update display with fresh data
-        this.updateLocationInfo(`${this.config.city} Zone ${this.currentZone}`);
-        this.updateBinDisplay();
-        
-        // Save refreshed data to cache
-        this.saveToCache();
-        
-        console.log("✅ Geo data refreshed successfully");
-      } else {
-        throw new Error("Could not find zone data for current location");
-      }
-    } catch (error) {
-      console.error("❌ Failed to refresh geo data:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update the next collection display
-   */
-  updateNextCollectionDisplay(status) {
-    const nextCollectionEl = document.getElementById("nextCollection");
-    if (!nextCollectionEl) return;
-
-    const timeEl = nextCollectionEl.querySelector(".collection-time");
-    const dateEl = nextCollectionEl.querySelector(".collection-date");
-
-    if (timeEl) {
-      timeEl.textContent = status.nextCollectionText || "Unknown";
-    }
-
-    if (dateEl) {
-      dateEl.textContent = status.nextCollectionDateText || "";
-    }
-  }
-
-  /**
-   * Update the bins container with current bin states
-   */
-  updateBinsContainer(status) {
-    const container = document.getElementById("binsContainer");
-    if (!container) return;
-
-    // Clear existing bins
-    container.innerHTML = "";
-
-    // Define preferred order with green bin first
-    const binOrder = ['green', 'rubbish', 'recycling'];
-    
-    // Get all bin entries and sort them
-    const binEntries = Object.entries(this.currentZoneFeature?.properties?.bins || {});
-    const sortedBinEntries = binEntries.sort(([binTypeA], [binTypeB]) => {
-      const indexA = binOrder.indexOf(binTypeA);
-      const indexB = binOrder.indexOf(binTypeB);
-      
-      // If both bins are in the order array, sort by their position
-      if (indexA !== -1 && indexB !== -1) {
-        return indexA - indexB;
-      }
-      // If only one is in the order array, prioritize it
-      if (indexA !== -1) return -1;
-      if (indexB !== -1) return 1;
-      // If neither is in the order array, maintain original order
-      return 0;
-    });
-
-    // Create bins using the sorted order
-    sortedBinEntries.forEach(([binType, binConfig]) => {
-      const binState = status.binStates[binType] || { isActive: false };
-      const binEl = this.createBinElement(binType, binConfig, binState);
-      container.appendChild(binEl);
-    });
-  }
-
-  /**
-   * Create a bin element
-   */
-  createBinElement(binType, binConfig, binState) {
-    const binEl = document.createElement("div");
-    binEl.className = `bin ${binType}`;
-
-    // Add active/inactive class based on binState
-    if (binState.isActive) {
-      binEl.classList.add("active");
+  getLocationErrorMessage(error) {
+    if (error.message.includes("denied")) {
+      return "Location permission denied. Please enter your address below to find your collection zone.";
+    } else if (error.message.includes("unavailable")) {
+      return "Location services unavailable. Please enter your address below to find your collection zone.";
+    } else if (error.message.includes("timeout")) {
+      return "Location request timed out. Please enter your address below to find your collection zone.";
     } else {
-      binEl.classList.add("inactive");
-    }
-
-    // Bin icon
-    const iconEl = document.createElement("div");
-    iconEl.className = `bin-icon ${binType}`;
-    iconEl.innerHTML = this.getBinIcon(binType);
-
-    // Bin label
-    const labelEl = document.createElement("div");
-    labelEl.className = "bin-label";
-    labelEl.textContent = binConfig.name;
-
-    binEl.appendChild(iconEl);
-    binEl.appendChild(labelEl);
-
-    // Add click handler for additional info
-    binEl.addEventListener("click", () => {
-      this.showBinInfo(binType, binConfig, binState);
-    });
-
-    return binEl;
-  }
-
-  /**
-   * Get icon for bin type
-   */
-  getBinIcon(binType) {
-    // Return empty string - icon is now handled entirely by CSS
-    return '';
-  }
-  /**
-   * Get symbol for bin content type
-   */
-  getBinSymbol(binType) {
-    const symbols = {
-      rubbish:
-        '<text x="0" y="0" text-anchor="middle" fill="white" font-size="120" font-weight="bold">🗑️</text>',
-      recycling:
-        '<text x="0" y="0" text-anchor="middle" fill="white" font-size="120" font-weight="bold">♻️</text>',
-      green:
-        '<text x="0" y="0" text-anchor="middle" fill="white" font-size="120" font-weight="bold">🌿</text>',
-      glass:
-        '<text x="0" y="0" text-anchor="middle" fill="white" font-size="120" font-weight="bold">🍾</text>',
-    };
-    return symbols[binType] || symbols["rubbish"];
-  }
-
-  /**
-   * Show bin information (placeholder for future enhancement)
-   */
-  showBinInfo(binType, binConfig, binState) {
-    // This could show a modal with more details about the bin
-    console.log("Bin info:", { binType, binConfig, binState });
-
-    // For now, just log some useful info
-    if (binState.isActive) {
-      console.log(
-        `🗑️ ${binConfig.name} will be collected in the next collection cycle`
-      );
-    } else {
-      console.log(`🗑️ ${binConfig.name} is not in the next collection cycle`);
-    }
-  }
-
-  /**
-   * Show manual zone selector
-   */
-  async showManualZoneSelector() {
-    try {
-      // Load current city config if not available
-      if (!this.config) {
-        const defaultCity = "bendigo";
-        this.config = await loadCityConfig(defaultCity);
-        this.currentCity = defaultCity;
-      }
-
-      const selector = document.getElementById("manualZoneSelector");
-      const zoneButtons = document.getElementById("zoneButtons");
-
-      if (!selector || !zoneButtons) return;
-
-      // Clear existing buttons
-      zoneButtons.innerHTML = "";
-
-      // Create zone buttons
-      Object.keys(this.config.zones).forEach((zone) => {
-        const btn = document.createElement("button");
-        btn.className = "zone-btn";
-        btn.textContent = `Zone ${zone}`;
-        btn.addEventListener("click", () => this.selectZone(zone));
-        zoneButtons.appendChild(btn);
-      });
-
-      // Show selector, hide error
-      selector.style.display = "block";
-      this.hideError();
-    } catch (error) {
-      console.error("Error showing manual zone selector:", error);
-      this.showError("Unable to load zone options: " + error.message);
-    }
-  }
-
-  /**
-   * Hide manual zone selector
-   */
-  hideManualZoneSelector() {
-    const selector = document.getElementById("manualZoneSelector");
-    if (selector) {
-      selector.style.display = "none";
-    }
-  }
-
-  /**
-   * Enable test mode with Zone A
-   */
-  async enableTestMode() {
-    try {
-      console.log("🧪 Enabling test mode with Zone A");
-
-      // Load Bendigo config if not available
-      if (!this.config) {
-        this.config = await loadCityConfig("bendigo");
-      }
-
-      this.currentCity = "bendigo";
-      this.currentZone = "A";
-
-      // Test all zones first for debugging
-      if (typeof debugAllZones === "function") {
-        debugAllZones(this.config);
-      }
-
-      // Update display
-      this.updateLocationInfo(`${this.config.city} Zone A (test mode)`);
-      this.updateBinDisplay();
-
-      // Save to cache
-      this.saveToCache();
-
-      // Hide error
-      this.hideError();
-    } catch (error) {
-      console.error("Error enabling test mode:", error);
-      this.showError("Error enabling test mode: " + error.message);
+      return "Unable to get your location. Please enter your address below to find your collection zone.";
     }
   }
 
@@ -553,413 +321,76 @@ class BinNightsApp {
    */
   async lookupAddress() {
     const addressInput = document.getElementById("addressInput");
-    const lookupBtn = document.getElementById("lookupAddressBtn");
 
-    if (!addressInput || !lookupBtn) {
+    if (!addressInput) {
       console.error("Address input elements not found");
       return;
     }
 
     const address = addressInput.value.trim();
     if (!address) {
-      this.showError("Please enter an address to look up.");
+      this.uiManager.showError("Please enter an address to look up.");
       return;
     }
 
     try {
-      // Update button state
-      const originalText = lookupBtn.textContent;
-      lookupBtn.textContent = "Looking up...";
-      lookupBtn.disabled = true;
+      this.uiManager.setButtonLoading("lookupAddressBtn", true, "Looking up...");
+      this.uiManager.updateLocationInfo(`Looking up address: ${address}`);
 
-      // Update location info
-      this.updateLocationInfo(`Looking up address: ${address}`);
-
-      console.log("🔍 Looking up address:", address);
-
-      // Use the address lookup function
-      const locationInfo = await getLocationFromAddress(address);
-      console.log("📍 Address lookup result:", locationInfo);
+      console.log("� Looking up address:", address);
+      const locationInfo = await this.locationManager.getLocationFromAddress(address);
 
       if (locationInfo.success) {
-        this.currentCity = locationInfo.city;
-        this.currentZone = locationInfo.zone;
-        this.currentZoneFeature = locationInfo.zoneFeature;
-        this.config = locationInfo.config;
-        this.zones = locationInfo.zones;
-
-        // Update UI with geocoded address info
-        const locationText = locationInfo.address
-          ? `${this.config.city} Zone ${this.currentZone} (${
-              locationInfo.address.split(",")[0]
-            })`
-          : `${this.config.city} Zone ${this.currentZone}`;
-        this.updateLocationInfo(locationText);
-        this.updateBinDisplay();
-        this.hasDisplayedLocation = true; // Mark that we've shown location info
-
-        // Save to cache
-        this.saveToCache();
-
-        // Hide error message and close modal
-        this.hideError();
-        this.closeAddressSelectionModal();
-
-        // Clear the input
-        addressInput.value = "";
+        this.updateDisplayAfterLocationChange(locationInfo.address?.split(",")[0]);
+        this.uiManager.closeAddressSelectionModal();
+        this.uiManager.clearAddressInput();
       } else {
         console.warn("❌ Address lookup failed:", locationInfo.error);
-        this.showError(
+        this.uiManager.showError(
           locationInfo.error ||
             "Unable to find your address. Please try a more specific address or select your zone manually."
         );
       }
     } catch (error) {
       console.error("❌ Address lookup error:", error);
-      this.showError("Error looking up address: " + error.message);
+      this.uiManager.showError("Error looking up address: " + error.message);
     } finally {
-      // Restore button state
-      lookupBtn.textContent = "Find My Zone";
-      lookupBtn.disabled = false;
+      this.uiManager.setButtonLoading("lookupAddressBtn", false);
     }
   }
 
   /**
-   * Setup autocomplete functionality for address input
+   * Handle "Use GPS" button click
    */
-  setupAutocomplete() {
-    const addressInput = document.getElementById("addressInput");
-    if (!addressInput) return;
-
-    // Input event for typing
-    addressInput.addEventListener("input", this.handleAddressInput);
-
-    // Keyboard navigation
-    addressInput.addEventListener("keydown", this.handleKeyDown);
-
-    // Hide suggestions when clicking outside
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".address-autocomplete")) {
-        this.hideSuggestions();
-      }
-    });
-
-    // Hide suggestions when input loses focus (with a delay for click events)
-    addressInput.addEventListener("blur", () => {
-      setTimeout(() => this.hideSuggestions(), 150);
-    });
-  }
-
-  /**
-   * Handle address input changes with debouncing
-   */
-  async handleAddressInput(e) {
-    const query = e.target.value; // Don't trim here - keep original value with spaces
-
-    // Clear previous timeout
-    if (this.autocompleteTimeout) {
-      clearTimeout(this.autocompleteTimeout);
-    }
-
-    // Reset selection
-    this.selectedSuggestionIndex = -1;
-
-    // Simple check: search only when query ends with space and has meaningful content
-    const endsWithSpace = query.endsWith(" ");
-    const trimmedQuery = query.trim();
-    const shouldSearch = endsWithSpace && trimmedQuery.length >= 3;
-
-    // Debug logging
-    console.log(
-      "Raw query:",
-      `"${query}"`,
-      "Length:",
-      query.length,
-      "Ends with space:",
-      endsWithSpace,
-      "Trimmed:",
-      `"${trimmedQuery}"`,
-      "Should search:",
-      shouldSearch
-    );
-
-    if (!shouldSearch) {
-      // Show helper text if user is typing but hasn't completed a word
-      if (query.length >= 2) {
-        this.showHelperText();
-      } else {
-        this.hideSuggestions();
-      }
-      return;
-    }
-
-    // Debounce the API call
-    this.autocompleteTimeout = setTimeout(async () => {
-      try {
-        this.showLoadingSuggestions();
-        const suggestions = await searchAddresses(query);
-        this.suggestions = suggestions;
-        this.showSuggestions(suggestions);
-      } catch (error) {
-        console.error("Autocomplete error:", error);
-        this.hideSuggestions();
-      }
-    }, 300); // 300ms delay
-  }
-
-  /**
-   * Show loading state in suggestions dropdown
-   */
-  showLoadingSuggestions() {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (!dropdown) return;
-
-    dropdown.innerHTML =
-      '<div class="autocomplete-loading">Searching addresses...</div>';
-    dropdown.style.display = "block";
-  }
-
-  /**
-   * Show address suggestions in dropdown
-   */
-  showSuggestions(suggestions) {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (!dropdown) return;
-
-    if (suggestions.length === 0) {
-      dropdown.innerHTML =
-        '<div class="autocomplete-no-results">No addresses found</div>';
-      dropdown.style.display = "block";
-      return;
-    }
-
-    dropdown.innerHTML = suggestions
-      .map((suggestion, index) => {
-        return `<div class="autocomplete-item" data-index="${index}">
-                ${suggestion.display_name}
-            </div>`;
-      })
-      .join("");
-
-    // Add click event listeners to suggestions
-    dropdown.querySelectorAll(".autocomplete-item").forEach((item, index) => {
-      item.addEventListener("click", () => this.selectSuggestion(index));
-    });
-
-    dropdown.style.display = "block";
-  }
-
-  /**
-   * Show helper text in suggestions dropdown
-   */
-  showHelperText() {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (!dropdown) return;
-
-    dropdown.innerHTML =
-      '<div class="autocomplete-helper-text">Address suggestions will appear after you finish typing a word (add a space)</div>';
-    dropdown.style.display = "block";
-  }
-
-  /**
-   * Hide suggestions dropdown
-   */
-  hideSuggestions() {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (dropdown) {
-      dropdown.style.display = "none";
-      dropdown.innerHTML = "";
-    }
-    this.selectedSuggestionIndex = -1;
-    this.suggestions = [];
-  }
-
-  /**
-   * Select a suggestion from the dropdown
-   */
-  async selectSuggestion(index) {
-    if (index < 0 || index >= this.suggestions.length) return;
-
-    const suggestion = this.suggestions[index];
-    const addressInput = document.getElementById("addressInput");
-
-    if (addressInput) {
-      addressInput.value = suggestion.display_name;
-    }
-
-    this.hideSuggestions();
-
-    // Automatically look up the selected address
+  async handleUseGps() {
     try {
-      const locationInfo = await getLocationInfo(
-        suggestion.lat,
-        suggestion.lng
-      );
-      console.log("📍 Selected address location info:", locationInfo);
+      this.uiManager.updateLocationInfo("Getting your location...");
+      
+      await this.getCurrentLocationAndUpdate();
+      this.uiManager.closeAddressSelectionModal();
+    } catch (error) {
+      console.error("GPS failed:", error);
+      this.uiManager.updateLocationInfo("GPS failed. Please enter your address below.");
+      this.uiManager.showAddressInput();
+    }
+  }
 
-      if (locationInfo.success) {
-        this.currentCity = locationInfo.city;
-        this.currentZone = locationInfo.zone;
-        this.currentZoneFeature = locationInfo.zoneFeature;
-        this.config = locationInfo.config;
-        this.zones = locationInfo.zones;
-
-        // Update UI
-        const locationText = `${this.config.city} Zone ${this.currentZone} (${
-          suggestion.display_name.split(",")[0]
-        })`;
-        this.updateLocationInfo(locationText);
-        this.updateBinDisplay();
-        this.hasDisplayedLocation = true; // Mark that we've shown location info
-
-        // Save to cache
-        this.saveToCache();
-
-        // Hide error message and close modal
-        this.hideError();
-        this.closeAddressSelectionModal();
-
-        // Clear the input
-        if (addressInput) {
-          addressInput.value = "";
-        }
+  /**
+   * Select a zone manually
+   */
+  async selectZone(zone) {
+    try {
+      const result = await this.locationManager.selectZone(zone, this.locationManager.currentCity || "bendigo");
+      
+      if (result.success) {
+        this.updateDisplayAfterLocationChange(" (manual)");
+        this.uiManager.hideManualZoneSelector();
       } else {
-        console.warn(
-          "❌ Selected address location failed:",
-          locationInfo.error
-        );
-        this.showError(
-          locationInfo.error ||
-            "Selected address is not in a supported collection zone."
-        );
+        this.uiManager.showError("Error selecting zone: " + result.error);
       }
     } catch (error) {
-      console.error("❌ Error processing selected address:", error);
-      this.showError("Error processing selected address: " + error.message);
-    }
-  }
-
-  /**
-   * Handle keyboard navigation in autocomplete
-   */
-  handleKeyDown(e) {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (!dropdown || dropdown.style.display === "none") return;
-
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        this.selectedSuggestionIndex = Math.min(
-          this.selectedSuggestionIndex + 1,
-          this.suggestions.length - 1
-        );
-        this.updateSuggestionHighlight();
-        break;
-
-      case "ArrowUp":
-        e.preventDefault();
-        this.selectedSuggestionIndex = Math.max(
-          this.selectedSuggestionIndex - 1,
-          -1
-        );
-        this.updateSuggestionHighlight();
-        break;
-
-      case "Escape":
-        this.hideSuggestions();
-        break;
-
-      case "Enter":
-        if (this.selectedSuggestionIndex >= 0) {
-          e.preventDefault();
-          this.selectSuggestion(this.selectedSuggestionIndex);
-        }
-        break;
-    }
-  }
-
-  /**
-   * Update visual highlight of selected suggestion
-   */
-  updateSuggestionHighlight() {
-    const dropdown = document.getElementById("autocompleteDropdown");
-    if (!dropdown) return;
-
-    const items = dropdown.querySelectorAll(".autocomplete-item");
-    items.forEach((item, index) => {
-      if (index === this.selectedSuggestionIndex) {
-        item.classList.add("highlighted");
-      } else {
-        item.classList.remove("highlighted");
-      }
-    });
-  }
-
-  /**
-   * Toggle dark mode
-   */
-  toggleDarkMode() {
-    const isDark =
-      document.documentElement.getAttribute("data-theme") === "dark";
-    const newTheme = isDark ? "light" : "dark";
-
-    document.documentElement.setAttribute("data-theme", newTheme);
-    localStorage.setItem("binNights-theme", newTheme);
-    
-    // Update toggle state
-    this.updateThemeToggle();
-  }
-
-  /**
-   * Detect system theme preference
-   */
-  getSystemTheme() {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    return 'light';
-  }
-
-  /**
-   * Update theme toggle state
-   */
-  updateThemeToggle() {
-    const darkModeToggle = document.getElementById("darkModeToggle");
-    if (darkModeToggle) {
-      const currentTheme = document.documentElement.getAttribute("data-theme");
-      darkModeToggle.checked = currentTheme === "dark";
-    }
-  }
-
-  /**
-   * Apply saved settings from localStorage
-   */
-  applySavedSettings() {
-    // Apply saved theme or system preference
-    let savedTheme = localStorage.getItem("binNights-theme");
-    
-    // If no saved theme, use system preference
-    if (!savedTheme) {
-      savedTheme = this.getSystemTheme();
-      console.log("No saved theme, using system preference:", savedTheme);
-    }
-    
-    document.documentElement.setAttribute("data-theme", savedTheme);
-    this.updateThemeToggle();
-    
-    // Listen for system theme changes
-    if (window.matchMedia) {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      mediaQuery.addListener((e) => {
-        // Only update if user hasn't manually set a preference
-        const manualTheme = localStorage.getItem("binNights-theme");
-        if (!manualTheme) {
-          const systemTheme = e.matches ? 'dark' : 'light';
-          document.documentElement.setAttribute("data-theme", systemTheme);
-          this.updateThemeToggle();
-          console.log("System theme changed to:", systemTheme);
-        }
-      });
+      console.error("Error selecting zone:", error);
+      this.uiManager.showError("Error selecting zone: " + error.message);
     }
   }
 
@@ -970,21 +401,27 @@ class BinNightsApp {
     try {
       console.log("🔄 Refreshing data...");
 
-      if (this.currentCity && this.currentZone) {
+      const hasLocation = this.locationManager.currentCity && this.locationManager.currentZone;
+      
+      if (hasLocation) {
         // If we have location data, refresh geo data to get latest schedules
-        if (this.config && this.currentZoneFeature) {
+        if (this.locationManager.config && this.locationManager.currentZoneFeature) {
           // Just update display if we have everything
-          this.updateBinDisplay();
-          this.updateLastRefresh();
+          this.binDisplayManager.updateBinDisplay(
+            this.locationManager.config,
+            this.locationManager.currentZoneFeature
+          );
         } else {
           // Refresh geo data if missing
           try {
-            await this.refreshGeoData();
-            this.updateLastRefresh();
+            await this.locationManager.refreshGeoData();
+            this.updateDisplayAfterLocationChange();
           } catch (error) {
             console.warn("Failed to refresh geo data, updating display anyway:", error);
-            this.updateBinDisplay();
-            this.updateLastRefresh();
+            this.binDisplayManager.updateBinDisplay(
+              this.locationManager.config,
+              this.locationManager.currentZoneFeature
+            );
           }
         }
       } else {
@@ -993,686 +430,34 @@ class BinNightsApp {
       }
     } catch (error) {
       console.error("Error refreshing data:", error);
-      this.showError("Error refreshing: " + error.message);
+      this.uiManager.showError("Error refreshing: " + error.message);
     }
   }
 
   /**
-   * Show error message
+   * Enable test mode with Zone A
    */
-  showError(message) {
-    const errorDiv = document.getElementById("errorMessage");
-    if (errorDiv) {
-      errorDiv.querySelector("p").textContent = message;
-      errorDiv.style.display = "block";
-    }
-
-    // Update location info
-    this.updateLocationInfo("Location detection failed");
-  }
-
-  /**
-   * Hide error message
-   */
-  hideError() {
-    const errorDiv = document.getElementById("errorMessage");
-    if (errorDiv) {
-      errorDiv.style.display = "none";
-    }
-  }
-
-  /**
-   * Update location info display
-   */
-  updateLocationInfo(text) {
-    const locationInfo = document.getElementById("locationInfo");
-    if (locationInfo) {
-      locationInfo.textContent = text;
-    }
-  }
-
-  /**
-   * Update last refresh time
-   */
-  updateLastRefresh() {
-    this.lastUpdate = new Date();
-    const lastUpdateSpan = document.getElementById("lastUpdate");
-    if (lastUpdateSpan) {
-      lastUpdateSpan.textContent = `Updated: ${this.lastUpdate.toLocaleTimeString()}`;
-    }
-  }
-
-  /**
-   * Update bin display based on current zone and schedule
-   */
-  updateBinDisplay() {
-    if (!this.config || !this.currentZoneFeature) {
-      this.showError("Please enter your address to find your collection zone.");
-      return;
-    }
-
+  async enableTestMode() {
     try {
-      // Find next collection
-      const nextCollection = getNextCollection(
-        this.config,
-        this.currentZoneFeature
-      );
+      console.log("🧪 Enabling test mode with Zone A");
 
-      if (nextCollection) {
-        this.updateNextCollectionDisplay(nextCollection);
-
-        // Create status object with all bins and their active states
-        const status = {
-          binStates: {},
-        };
-
-        // Get all bin types from zone feature and set their active state
-        Object.keys(this.currentZoneFeature.properties.bins || {}).forEach(
-          (binType) => {
-            status.binStates[binType] = {
-              isActive: nextCollection.bins.includes(binType),
-            };
-          }
-        );
-
-        this.updateBinsContainer(status);
-      }
-
-      this.updateLastRefresh();
-    } catch (error) {
-      console.error("Error updating bin display:", error);
-      this.showError("Error updating display: " + error.message);
-    }
-  }
-
-  /**
-   * Update next collection time display
-   */
-  updateNextCollectionDisplay(nextCollection) {
-    const nextCollectionDiv = document.getElementById("nextCollection");
-    if (!nextCollectionDiv) return;
-
-    const timeDiv = nextCollectionDiv.querySelector(".collection-time");
-    const dateDiv = nextCollectionDiv.querySelector(".collection-date");
-
-    if (timeDiv && dateDiv) {
-      const timeUntil = getTimeText(
-        nextCollection.date,
-        getCurrentMoment(this.config.timezone)
-      );
-      timeDiv.textContent = timeUntil;
-      dateDiv.textContent = nextCollection.date.format("MMMM Do");
-    }
-  }
-
-  /**
-   * Save app state to localStorage
-   */
-  saveToCache() {
-    try {
-      // Extract only essential data from zoneFeature to reduce cache size
-      const simplifiedZoneData = this.currentZoneFeature ? {
-        zone: this.currentZoneFeature.properties.zone,
-        collectionDay: this.currentZoneFeature.properties.collectionDay,
-        bins: this.currentZoneFeature.properties.bins
-      } : null;
-
-      const cacheData = {
-        // Location data - persists indefinitely
-        city: this.currentCity,
-        zone: this.currentZone,
-        locationTimestamp: Date.now(),
-        
-        // Geo/bin data - expires after 24 hours
-        zoneData: simplifiedZoneData,
-        config: this.config,
-        lastUpdate: this.lastUpdate,
-        geoTimestamp: Date.now(),
-      };
-
-      localStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
-      console.log("💾 Data saved to cache (location + geo data)");
-    } catch (error) {
-      console.warn("Failed to save to cache:", error);
-    }
-  }
-
-  /**
-   * Load app state from localStorage
-   */
-  loadFromCache() {
-    try {
-      const cached = localStorage.getItem(this.cacheKey);
-      if (!cached) return false;
-
-      const data = JSON.parse(cached);
-
-      // Handle migration from old cache format (single timestamp)
-      if (data.timestamp && !data.geoTimestamp) {
-        data.geoTimestamp = data.timestamp;
-        data.locationTimestamp = data.timestamp;
-      }
-
-      // Check if geo data is still valid (24 hours)
-      const maxGeoAge = 24 * 60 * 60 * 1000; // 24 hours
-      const geoDataExpired = data.geoTimestamp && (Date.now() - data.geoTimestamp > maxGeoAge);
+      const result = await this.locationManager.selectZone("A", "bendigo");
       
-      // Always load location data if available
-      let hasLocationData = false;
-      if (data.city && data.zone) {
-        this.currentCity = data.city;
-        this.currentZone = data.zone;
-        hasLocationData = true;
-        console.log("📦 Location data loaded from cache:", {
-          city: this.currentCity,
-          zone: this.currentZone,
-        });
-      }
+      if (result.success) {
+        // Test all zones first for debugging
+        if (typeof debugAllZones === "function") {
+          debugAllZones(result.config);
+        }
 
-      // Load geo data only if not expired
-      if (!geoDataExpired && data.config && data.zoneData) {
-        this.config = data.config;
-        this.lastUpdate = data.lastUpdate ? new Date(data.lastUpdate) : null;
-
-        // Reconstruct currentZoneFeature from simplified zoneData
-        this.currentZoneFeature = {
-          type: "Feature",
-          properties: {
-            zone: data.zoneData.zone,
-            collectionDay: data.zoneData.collectionDay,
-            bins: data.zoneData.bins
-          },
-          geometry: null // We don't need the geometry for bin scheduling
-        };
-
-        console.log("📦 Geo data loaded from cache (fresh)");
-      } else if (geoDataExpired) {
-        console.log("📦 Geo data expired, will refresh bin schedules");
-        // Clear expired geo data but keep location
-        this.config = null;
-        this.currentZoneFeature = null;
-        this.lastUpdate = null;
+        this.updateDisplayAfterLocationChange(" (test mode)");
       } else {
-        console.log("📦 No geo data in cache");
-        this.config = null;
-        this.currentZoneFeature = null;
-        this.lastUpdate = null;
+        this.uiManager.showError("Error enabling test mode: " + result.error);
       }
-
-      // Handle old cache format with zoneFeature
-      if (!this.currentZoneFeature && data.zoneFeature && !geoDataExpired) {
-        this.currentZoneFeature = data.zoneFeature;
-        // Convert to new format and re-save to reduce cache size
-        this.saveToCache();
-      }
-
-      // We no longer store the full zones GeoJSON in cache
-      this.zones = null;
-
-      return hasLocationData; // Return true if we have at least location data
     } catch (error) {
-      console.warn("Failed to load from cache:", error);
-      // Don't clear cache on error, just return false
-      return false;
+      console.error("Error enabling test mode:", error);
+      this.uiManager.showError("Error enabling test mode: " + error.message);
     }
-  }
-
-  /**
-   * Select a zone manually
-   */
-  async selectZone(zone) {
-    try {
-      this.currentZone = zone;
-
-      // Load zones data if not available
-      if (!this.zones && this.currentCity) {
-        this.zones = await loadCityZones(this.currentCity);
-      }
-
-      // Find the zone feature
-      if (this.zones) {
-        this.currentZoneFeature = this.zones.features.find(
-          (feature) => feature.properties.zone === zone
-        );
-      }
-
-      // Update display
-      this.updateLocationInfo(`${this.config.city} Zone ${zone} (manual)`);
-      this.updateBinDisplay();
-
-      // Save to cache
-      this.saveToCache();
-
-      // Hide selector
-      this.hideManualZoneSelector();
-    } catch (error) {
-      console.error("Error selecting zone:", error);
-      this.showError("Error selecting zone: " + error.message);
-    }
-  }
-
-  /**
-   * Show settings modal with focus on address search (when GPS fails)
-   */
-  showSettingsWithAddressSearch() {
-    // Don't show modal if we already have location info displayed
-    if (this.hasDisplayedLocation) {
-      return;
-    }
-    
-    const modal = document.getElementById("settingsModal");
-    const addressSection = document.getElementById("addressSearchSection");
-    const addressInput = document.getElementById("addressInput");
-    
-    if (!modal) return;
-
-    // Show the modal
-    this.populateSettings();
-    modal.style.display = "flex";
-    
-    // Focus on the address input if available
-    if (addressInput) {
-      setTimeout(() => {
-        addressInput.focus();
-      }, 100);
-    }
-    
-    // Update location info to indicate manual setup
-    this.updateLocationInfo("Please find your location using the address search or zone selection below");
-  }
-
-  /**
-   * Show address selection modal
-   */
-  showAddressSelection() {
-    const modal = document.getElementById("addressSelectionModal");
-    if (!modal) return;
-
-    // Show the modal with location options
-    modal.style.display = "flex";
-    this.showLocationOptions();
-    
-    // Update location info to indicate manual setup
-    this.updateLocationInfo("Choose how you'd like to find your collection zone");
-  }
-
-  /**
-   * Close address selection modal
-   */
-  closeAddressSelectionModal() {
-    const modal = document.getElementById("addressSelectionModal");
-    if (modal) {
-      modal.style.display = "none";
-    }
-    
-    // Reset to options view
-    this.showLocationOptions();
-  }
-
-  /**
-   * Show location options (GPS or Address)
-   */
-  showLocationOptions() {
-    const optionsDiv = document.querySelector(".location-options");
-    const addressSection = document.getElementById("addressInputSection");
-    
-    if (optionsDiv) {
-      optionsDiv.style.display = "flex";
-    }
-    if (addressSection) {
-      addressSection.style.display = "none";
-    }
-  }
-
-  /**
-   * Show address input section
-   */
-  showAddressInput() {
-    const optionsDiv = document.querySelector(".location-options");
-    const addressSection = document.getElementById("addressInputSection");
-    const addressInput = document.getElementById("addressInput");
-    
-    if (optionsDiv) {
-      optionsDiv.style.display = "none";
-    }
-    if (addressSection) {
-      addressSection.style.display = "block";
-    }
-    
-    // Focus on the address input
-    if (addressInput) {
-      setTimeout(() => {
-        addressInput.focus();
-      }, 100);
-    }
-  }
-
-  /**
-   * Handle "Use GPS" button click
-   */
-  async handleUseGps() {
-    try {
-      this.updateLocationInfo("Getting your location...");
-      
-      // Try to get location
-      await this.getCurrentLocationAndUpdate();
-      
-      // Close the modal if successful
-      this.closeAddressSelectionModal();
-    } catch (error) {
-      console.error("GPS failed:", error);
-      // Let the user know GPS failed and switch to address input
-      this.updateLocationInfo("GPS failed. Please enter your address below.");
-      this.showAddressInput();
-    }
-  }
-
-  /**
-   * Set up PWA install functionality
-   */
-  setupPWAInstall() {
-    // Check if device is mobile (iPhone or Android)
-    const isMobile = this.isMobileDevice();
-    const installBtn = document.getElementById("installBtn");
-    
-    if (!isMobile || !installBtn) {
-      return; // Only show on mobile devices
-    }
-
-    // Listen for beforeinstallprompt event (Android)
-    window.addEventListener('beforeinstallprompt', (e) => {
-      console.log('📱 PWA install prompt available');
-      // Prevent Chrome 67 and earlier from automatically showing the prompt
-      e.preventDefault();
-      // Store the event so it can be triggered later
-      this.deferredPrompt = e;
-      this.isInstallable = true;
-      this.showInstallButton();
-    });
-
-    // Check if app is already installed
-    window.addEventListener('appinstalled', () => {
-      console.log('📱 PWA was installed');
-      this.hideInstallButton();
-      this.deferredPrompt = null;
-    });
-
-    // For iOS Safari, show install button if not in standalone mode
-    if (this.isIOSDevice() && !this.isInStandaloneMode()) {
-      console.log('📱 iOS device detected, showing install instructions');
-      this.showInstallButton();
-    }
-
-    // Hide install button if already in standalone mode
-    if (this.isInStandaloneMode()) {
-      console.log('📱 App already installed (standalone mode)');
-      this.hideInstallButton();
-    }
-  }
-
-  /**
-   * Check if device is mobile (iPhone or Android)
-   */
-  isMobileDevice() {
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    
-    // Check for iPhone/iPad
-    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-    
-    // Check for Android
-    const isAndroid = /android/i.test(userAgent);
-    
-    return isIOS || isAndroid;
-  }
-
-  /**
-   * Check if device is iOS
-   */
-  isIOSDevice() {
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    return /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-  }
-
-  /**
-   * Check if app is running in standalone mode (already installed)
-   */
-  isInStandaloneMode() {
-    return window.matchMedia('(display-mode: standalone)').matches || 
-           window.navigator.standalone === true;
-  }
-
-  /**
-   * Show the install button
-   */
-  showInstallButton() {
-    const installBtn = document.getElementById("installBtn");
-    if (installBtn) {
-      installBtn.style.display = 'flex';
-    }
-  }
-
-  /**
-   * Hide the install button
-   */
-  hideInstallButton() {
-    const installBtn = document.getElementById("installBtn");
-    if (installBtn) {
-      installBtn.style.display = 'none';
-    }
-  }
-
-  /**
-   * Handle install button click
-   */
-  async handleInstallPrompt() {
-    const installBtn = document.getElementById("installBtn");
-    
-    if (this.isIOSDevice()) {
-      // iOS Safari - show install instructions
-      this.showIOSInstallInstructions();
-      return;
-    }
-
-    if (!this.deferredPrompt) {
-      console.log('📱 No install prompt available');
-      return;
-    }
-
-    // Show the install prompt (Android)
-    try {
-      installBtn.disabled = true;
-      installBtn.textContent = '📱 Installing...';
-      
-      this.deferredPrompt.prompt();
-      
-      // Wait for the user to respond to the prompt
-      const { outcome } = await this.deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        console.log('📱 User accepted the install prompt');
-        this.hideInstallButton();
-      } else {
-        console.log('📱 User dismissed the install prompt');
-      }
-      
-      // Clear the deferredPrompt so it can only be used once
-      this.deferredPrompt = null;
-    } catch (error) {
-      console.error('📱 Error showing install prompt:', error);
-    } finally {
-      installBtn.disabled = false;
-      installBtn.innerHTML = '📱 Install App';
-    }
-  }
-
-  /**
-   * Show iOS install instructions
-   */
-  showIOSInstallInstructions() {
-    const message = `To install this app on your iPhone/iPad:
-
-1. Tap the Share button (📤) in Safari
-2. Scroll down and tap "Add to Home Screen"
-3. Tap "Add" to confirm
-
-The app will appear on your home screen like a native app!`;
-
-    alert(message);
-  }
-
-  /**
-   * Set up PWA install functionality
-   */
-  setupPWAInstall() {
-    // Check if device is mobile (iPhone or Android)
-    const isMobile = this.isMobileDevice();
-    const installBtn = document.getElementById("installBtn");
-    
-    if (!isMobile || !installBtn) {
-      return; // Only show on mobile devices
-    }
-
-    // Listen for beforeinstallprompt event (Android)
-    window.addEventListener('beforeinstallprompt', (e) => {
-      console.log('📱 PWA install prompt available');
-      // Prevent Chrome 67 and earlier from automatically showing the prompt
-      e.preventDefault();
-      // Store the event so it can be triggered later
-      this.deferredPrompt = e;
-      this.isInstallable = true;
-      this.showInstallButton();
-    });
-
-    // Check if app is already installed
-    window.addEventListener('appinstalled', () => {
-      console.log('📱 PWA was installed');
-      this.hideInstallButton();
-      this.deferredPrompt = null;
-    });
-
-    // For iOS Safari, show install button if not in standalone mode
-    if (this.isIOSDevice() && !this.isInStandaloneMode()) {
-      console.log('📱 iOS device detected, showing install instructions');
-      this.showInstallButton();
-    }
-
-    // Hide install button if already in standalone mode
-    if (this.isInStandaloneMode()) {
-      console.log('📱 App already installed (standalone mode)');
-      this.hideInstallButton();
-    }
-  }
-
-  /**
-   * Check if device is mobile (iPhone or Android)
-   */
-  isMobileDevice() {
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    
-    // Check for iPhone/iPad
-    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-    
-    // Check for Android
-    const isAndroid = /android/i.test(userAgent);
-    
-    return isIOS || isAndroid;
-  }
-
-  /**
-   * Check if device is iOS
-   */
-  isIOSDevice() {
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    return /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-  }
-
-  /**
-   * Check if app is running in standalone mode (already installed)
-   */
-  isInStandaloneMode() {
-    return window.matchMedia('(display-mode: standalone)').matches || 
-           window.navigator.standalone === true;
-  }
-
-  /**
-   * Show the install button
-   */
-  showInstallButton() {
-    const installBtn = document.getElementById("installBtn");
-    if (installBtn) {
-      installBtn.style.display = 'flex';
-    }
-  }
-
-  /**
-   * Hide the install button
-   */
-  hideInstallButton() {
-    const installBtn = document.getElementById("installBtn");
-    if (installBtn) {
-      installBtn.style.display = 'none';
-    }
-  }
-
-  /**
-   * Handle install button click
-   */
-  async handleInstallPrompt() {
-    const installBtn = document.getElementById("installBtn");
-    
-    if (this.isIOSDevice()) {
-      // iOS Safari - show install instructions
-      this.showIOSInstallInstructions();
-      return;
-    }
-
-    if (!this.deferredPrompt) {
-      console.log('📱 No install prompt available');
-      return;
-    }
-
-    // Show the install prompt (Android)
-    try {
-      installBtn.disabled = true;
-      installBtn.textContent = '📱 Installing...';
-      
-      this.deferredPrompt.prompt();
-      
-      // Wait for the user to respond to the prompt
-      const { outcome } = await this.deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        console.log('📱 User accepted the install prompt');
-        this.hideInstallButton();
-      } else {
-        console.log('📱 User dismissed the install prompt');
-      }
-      
-      // Clear the deferredPrompt so it can only be used once
-      this.deferredPrompt = null;
-    } catch (error) {
-      console.error('📱 Error showing install prompt:', error);
-    } finally {
-      installBtn.disabled = false;
-      installBtn.innerHTML = '📱 Install App';
-    }
-  }
-
-  /**
-   * Show iOS install instructions
-   */
-  showIOSInstallInstructions() {
-    const message = `To install this app on your iPhone/iPad:
-
-1. Tap the Share button (📤) in Safari
-2. Scroll down and tap "Add to Home Screen"
-3. Tap "Add" to confirm
-
-The app will appear on your home screen like a native app!`;
-
-    alert(message);
-  }
-}
+  }}
 
 // Initialize the app
 new BinNightsApp();

@@ -333,9 +333,10 @@ async function getLocationFromAddress(address) {
  * Search for address suggestions using OpenStreetMap Nominatim API
  * @param {string} query - The search query
  * @param {number} limit - Maximum number of results (default: 5)
+ * @param {AbortSignal} signal - Optional abort signal for cancelling requests
  * @returns {Promise<Array>} Array of address suggestions
  */
-async function searchAddresses(query, limit = 5) {
+async function searchAddresses(query, limit = 5, signal = null) {
     try {
         if (!query || query.length < 3) {
             return [];
@@ -361,12 +362,11 @@ async function searchAddresses(query, limit = 5) {
         // Use OpenStreetMap Nominatim API for address search with geographic bounds
         const encodedQuery = encodeURIComponent(query);
         const bounds = `${bendigoBounds.west},${bendigoBounds.north},${bendigoBounds.east},${bendigoBounds.south}`; // left,top,right,bottom
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedQuery}&limit=${limit}&addressdetails=1&countrycodes=au&viewbox=${bounds}&bounded=1`;
-        
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'BinNights/1.0 (Waste Collection Reminder App)'
-            }
+            },
+            signal // Add abort signal support
         });
         
         if (!response.ok) {
@@ -435,6 +435,9 @@ function testZoneFinding() {
 
 // Make it available globally for testing
 window.testZoneFinding = testZoneFinding;
+
+// TODO: Replace with tree-shaken Turf.js imports for better bundle size
+// Example: import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
 
 // Export functions for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
