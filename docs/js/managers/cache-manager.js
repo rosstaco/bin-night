@@ -4,6 +4,8 @@
 class CacheManager {
   constructor() {
     this.cacheKey = "binNights";
+    this.apiCacheKey = "binNights_api";
+    this.apiCacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
   }
 
   /**
@@ -121,6 +123,66 @@ class CacheManager {
       console.log("🗑️ Cache cleared");
     } catch (error) {
       console.warn("Failed to clear cache:", error);
+    }
+  }
+
+  /**
+   * Cache API responses with TTL
+   */
+  cacheApiResponse(url, data, ttl = this.apiCacheExpiry) {
+    try {
+      const cacheEntry = {
+        data,
+        timestamp: Date.now(),
+        ttl,
+        url
+      };
+      
+      const existingCache = JSON.parse(localStorage.getItem(this.apiCacheKey) || '{}');
+      existingCache[url] = cacheEntry;
+      
+      localStorage.setItem(this.apiCacheKey, JSON.stringify(existingCache));
+      console.log(`💾 API response cached for: ${url}`);
+    } catch (error) {
+      console.warn('Failed to cache API response:', error);
+    }
+  }
+
+  /**
+   * Get cached API response if still valid
+   */
+  getCachedApiResponse(url) {
+    try {
+      const cache = JSON.parse(localStorage.getItem(this.apiCacheKey) || '{}');
+      const entry = cache[url];
+      
+      if (!entry) return null;
+      
+      const isExpired = (Date.now() - entry.timestamp) > entry.ttl;
+      if (isExpired) {
+        // Clean up expired entry
+        delete cache[url];
+        localStorage.setItem(this.apiCacheKey, JSON.stringify(cache));
+        return null;
+      }
+      
+      console.log(`📦 Using cached API response for: ${url}`);
+      return entry.data;
+    } catch (error) {
+      console.warn('Failed to load cached API response:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear API cache
+   */
+  clearApiCache() {
+    try {
+      localStorage.removeItem(this.apiCacheKey);
+      console.log('🗑️ API cache cleared');
+    } catch (error) {
+      console.warn('Failed to clear API cache:', error);
     }
   }
 }

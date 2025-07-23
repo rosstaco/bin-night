@@ -1,5 +1,5 @@
 // Service Worker for Bin Nights PWA
-const CACHE_VERSION = '2.2.0'; // Update this version when you want to force cache refresh
+const CACHE_VERSION = '2.2.1'; // Update this version when you want to force cache refresh
 const CACHE_NAME = `bin-nights-v${CACHE_VERSION}`;
 
 // Determine the base path dynamically from the service worker's own URL

@@ -1,11 +1,20 @@
 /**
- * Autocomplete Manager - Handles address autocomplete functionality
+ * Enhanced Autocomplete Manager with request cancellation and caching
  */
 class AutocompleteManager {
   constructor() {
     this.autocompleteTimeout = null;
     this.selectedSuggestionIndex = -1;
     this.suggestions = [];
+    this.currentAbortController = null; // For cancelling in-flight requests
+    this.cacheManager = null; // Will be injected
+  }
+
+  /**
+   * Initialize with cache manager reference
+   */
+  init(cacheManager) {
+    this.cacheManager = cacheManager;
   }
 
   /**
@@ -35,10 +44,16 @@ class AutocompleteManager {
   }
 
   /**
-   * Handle address input changes with debouncing
+   * Handle address input changes with debouncing and cancellation
    */
   async handleAddressInput(e) {
     const query = e.target.value; // Don't trim here - keep original value with spaces
+
+    // Cancel any pending request
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.currentAbortController = null;
+    }
 
     // Clear previous timeout
     if (this.autocompleteTimeout) {
@@ -80,13 +95,40 @@ class AutocompleteManager {
     // Debounce the API call
     this.autocompleteTimeout = setTimeout(async () => {
       try {
+        // Check cache first
+        const cacheKey = `address_search_${trimmedQuery}`;
+        const cachedResults = this.cacheManager?.getCachedApiResponse(cacheKey);
+
+        if (cachedResults) {
+          this.suggestions = cachedResults;
+          this.showSuggestions(cachedResults);
+          return;
+        }
+
         this.showLoadingSuggestions();
-        const suggestions = await searchAddresses(query);
+
+        // Create abort controller for this request
+        this.currentAbortController = new AbortController();
+
+        const suggestions = await searchAddresses(query, 5, this.currentAbortController.signal);
+
+        // Cache the results
+        if (this.cacheManager && suggestions.length > 0) {
+          this.cacheManager.cacheApiResponse(cacheKey, suggestions, 60 * 60 * 1000); // 1 hour
+        }
+
         this.suggestions = suggestions;
         this.showSuggestions(suggestions);
+
+        this.currentAbortController = null;
       } catch (error) {
-        console.error("Autocomplete error:", error);
-        this.hideSuggestions();
+        if (error.name === 'AbortError') {
+          console.log('Address search cancelled');
+        } else {
+          console.error("Autocomplete error:", error);
+          this.hideSuggestions();
+        }
+        this.currentAbortController = null;
       }
     }, 300); // 300ms delay
   }

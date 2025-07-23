@@ -37,6 +37,7 @@ class BinNightsApp {
       // Set up managers
       this.uiManager.init();
       this.pwaManager.setupPWAInstall();
+      this.autocompleteManager.init(this.cacheManager); // Pass cache manager
       this.autocompleteManager.setupAutocomplete();
 
       // Load cached data first
