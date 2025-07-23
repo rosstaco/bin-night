@@ -60,7 +60,7 @@ class BinNightsApp {
       // Apply saved settings
       this.applySavedSettings();
 
-      // If we have cached data, show it immediately
+      // If we have complete cached data (location + geo), show it immediately
       if (
         this.currentCity &&
         this.currentZone &&
@@ -72,6 +72,21 @@ class BinNightsApp {
         );
         this.updateBinDisplay();
         this.hasDisplayedLocation = true; // Mark that we've shown location info
+      } 
+      // If we have location but missing geo data, refresh geo data
+      else if (this.currentCity && this.currentZone && !this.config) {
+        console.log("📦 Have location, refreshing geo data...");
+        this.updateLocationInfo(`${this.currentCity} Zone ${this.currentZone} (refreshing...)`);
+        this.hasDisplayedLocation = true; // We have location info
+        
+        // Refresh geo data in background
+        try {
+          await this.refreshGeoData();
+        } catch (error) {
+          console.warn("Failed to refresh geo data:", error);
+          // Still show the location, user can manually refresh
+          this.updateLocationInfo(`${this.currentCity} Zone ${this.currentZone} (refresh needed)`);
+        }
       }
 
       // If no cached data, show address selection modal after a delay
@@ -257,6 +272,48 @@ class BinNightsApp {
         );
         this.showAddressSelection();
       }
+    }
+  }
+
+  /**
+   * Refresh geo data (config and zone features) while keeping location data
+   */
+  async refreshGeoData() {
+    if (!this.currentCity || !this.currentZone) {
+      throw new Error("No location data available to refresh geo data");
+    }
+
+    try {
+      console.log("🔄 Refreshing geo data for", this.currentCity, "zone", this.currentZone);
+      
+      // Load fresh config
+      this.config = await loadCityConfig(this.currentCity);
+      
+      // Load fresh zones data
+      this.zones = await loadCityZones(this.currentCity);
+      
+      // Find the zone feature for our current zone
+      if (this.zones) {
+        this.currentZoneFeature = this.zones.features.find(
+          (feature) => feature.properties.zone === this.currentZone
+        );
+      }
+
+      if (this.currentZoneFeature && this.config) {
+        // Update display with fresh data
+        this.updateLocationInfo(`${this.config.city} Zone ${this.currentZone}`);
+        this.updateBinDisplay();
+        
+        // Save refreshed data to cache
+        this.saveToCache();
+        
+        console.log("✅ Geo data refreshed successfully");
+      } else {
+        throw new Error("Could not find zone data for current location");
+      }
+    } catch (error) {
+      console.error("❌ Failed to refresh geo data:", error);
+      throw error;
     }
   }
 
@@ -899,11 +956,24 @@ class BinNightsApp {
       console.log("🔄 Refreshing data...");
 
       if (this.currentCity && this.currentZone) {
-        // Update with current zone
-        this.updateBinDisplay();
-        this.updateLastRefresh();
+        // If we have location data, refresh geo data to get latest schedules
+        if (this.config && this.currentZoneFeature) {
+          // Just update display if we have everything
+          this.updateBinDisplay();
+          this.updateLastRefresh();
+        } else {
+          // Refresh geo data if missing
+          try {
+            await this.refreshGeoData();
+            this.updateLastRefresh();
+          } catch (error) {
+            console.warn("Failed to refresh geo data, updating display anyway:", error);
+            this.updateBinDisplay();
+            this.updateLastRefresh();
+          }
+        }
       } else {
-        // Try to get location again
+        // Try to get location again if no location data
         await this.getCurrentLocationAndUpdate();
       }
     } catch (error) {
@@ -1033,16 +1103,20 @@ class BinNightsApp {
       } : null;
 
       const cacheData = {
+        // Location data - persists indefinitely
         city: this.currentCity,
         zone: this.currentZone,
-        zoneData: simplifiedZoneData, // Simplified instead of full zoneFeature
+        locationTimestamp: Date.now(),
+        
+        // Geo/bin data - expires after 24 hours
+        zoneData: simplifiedZoneData,
         config: this.config,
         lastUpdate: this.lastUpdate,
-        timestamp: Date.now(),
+        geoTimestamp: Date.now(),
       };
 
       localStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
-      console.log("💾 Data saved to cache (simplified)");
+      console.log("💾 Data saved to cache (location + geo data)");
     } catch (error) {
       console.warn("Failed to save to cache:", error);
     }
@@ -1058,22 +1132,34 @@ class BinNightsApp {
 
       const data = JSON.parse(cached);
 
-      // Check if cache is still valid (24 hours)
-      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-      if (Date.now() - data.timestamp > maxAge) {
-        console.log("📦 Cache expired, clearing...");
-        localStorage.removeItem(this.cacheKey);
-        return false;
+      // Handle migration from old cache format (single timestamp)
+      if (data.timestamp && !data.geoTimestamp) {
+        data.geoTimestamp = data.timestamp;
+        data.locationTimestamp = data.timestamp;
       }
 
-      this.currentCity = data.city;
-      this.currentZone = data.zone;
-      this.config = data.config;
-      this.lastUpdate = data.lastUpdate ? new Date(data.lastUpdate) : null;
+      // Check if geo data is still valid (24 hours)
+      const maxGeoAge = 24 * 60 * 60 * 1000; // 24 hours
+      const geoDataExpired = data.geoTimestamp && (Date.now() - data.geoTimestamp > maxGeoAge);
+      
+      // Always load location data if available
+      let hasLocationData = false;
+      if (data.city && data.zone) {
+        this.currentCity = data.city;
+        this.currentZone = data.zone;
+        hasLocationData = true;
+        console.log("📦 Location data loaded from cache:", {
+          city: this.currentCity,
+          zone: this.currentZone,
+        });
+      }
 
-      // Reconstruct currentZoneFeature from simplified zoneData or handle old format
-      if (data.zoneData) {
-        // New simplified cache format
+      // Load geo data only if not expired
+      if (!geoDataExpired && data.config && data.zoneData) {
+        this.config = data.config;
+        this.lastUpdate = data.lastUpdate ? new Date(data.lastUpdate) : null;
+
+        // Reconstruct currentZoneFeature from simplified zoneData
         this.currentZoneFeature = {
           type: "Feature",
           properties: {
@@ -1083,27 +1169,35 @@ class BinNightsApp {
           },
           geometry: null // We don't need the geometry for bin scheduling
         };
-      } else if (data.zoneFeature) {
-        // Old cache format - use existing zoneFeature but convert to new format
+
+        console.log("📦 Geo data loaded from cache (fresh)");
+      } else if (geoDataExpired) {
+        console.log("📦 Geo data expired, will refresh bin schedules");
+        // Clear expired geo data but keep location
+        this.config = null;
+        this.currentZoneFeature = null;
+        this.lastUpdate = null;
+      } else {
+        console.log("📦 No geo data in cache");
+        this.config = null;
+        this.currentZoneFeature = null;
+        this.lastUpdate = null;
+      }
+
+      // Handle old cache format with zoneFeature
+      if (!this.currentZoneFeature && data.zoneFeature && !geoDataExpired) {
         this.currentZoneFeature = data.zoneFeature;
         // Convert to new format and re-save to reduce cache size
         this.saveToCache();
-      } else {
-        this.currentZoneFeature = null;
       }
 
       // We no longer store the full zones GeoJSON in cache
       this.zones = null;
 
-      console.log("📦 Data loaded from cache (simplified):", {
-        city: this.currentCity,
-        zone: this.currentZone,
-      });
-
-      return true;
+      return hasLocationData; // Return true if we have at least location data
     } catch (error) {
       console.warn("Failed to load from cache:", error);
-      localStorage.removeItem(this.cacheKey);
+      // Don't clear cache on error, just return false
       return false;
     }
   }

@@ -28,8 +28,43 @@ function getNextCollection(config, zoneFeature, fromDate = null) {
     const referenceDate = moment.tz(config.startDate, config.timezone);
     const collectionDay = zoneInfo.collectionDay; // 1=Monday, 2=Tuesday, etc.
     
-    // Start searching from today
+    // Enable debugging with: localStorage.setItem('binNights-debug', 'true')
+    const debugEnabled = localStorage.getItem('binNights-debug') === 'true';
+    
+    if (debugEnabled) {
+        console.log('🔍 getNextCollection debug:', {
+            currentTime: startMoment.format('YYYY-MM-DD HH:mm:ss dddd'),
+            currentWeekday: startMoment.isoWeekday(),
+            collectionWeekday: collectionDay,
+            zone: zoneInfo.zone
+        });
+    }
+    
+    // Determine if we should skip today based on time
+    // After cutoff hour on collection day, show next week's collection
+    const cutoffHour = config.collectionCutoffHour || 18; // Default to 6 PM
+    const isAfterCutoff = startMoment.hour() >= cutoffHour;
+    const isTodayCollectionDay = startMoment.isoWeekday() === collectionDay;
+    const shouldSkipToday = isTodayCollectionDay && isAfterCutoff;
+    
+    if (debugEnabled) {
+        console.log('⏰ Time logic:', {
+            currentHour: startMoment.hour(),
+            cutoffHour,
+            isAfterCutoff,
+            isTodayCollectionDay,
+            shouldSkipToday
+        });
+    }
+    
+    // Start searching from today, but skip to tomorrow if after cutoff
     let searchDate = startMoment.clone().startOf('day');
+    if (shouldSkipToday) {
+        searchDate.add(1, 'day');
+        if (debugEnabled) {
+            console.log('⏭️ Skipping today due to time cutoff, starting search from tomorrow');
+        }
+    }
     
     // Find the next collection day (up to 14 days ahead)
     for (let i = 0; i < 14; i++) {
@@ -40,9 +75,17 @@ function getNextCollection(config, zoneFeature, fromDate = null) {
             const weeksSinceReference = Math.floor(searchDate.diff(referenceDate, 'weeks', true));
             const collectedBins = [];
             
+            if (debugEnabled) {
+                console.log(`📅 Found collection day: ${searchDate.format('YYYY-MM-DD dddd')} (i=${i}, weeksSinceRef=${weeksSinceReference})`);
+            }
+            
             Object.entries(zoneInfo.bins || {}).forEach(([binType, binConfig]) => {
                 const { interval, weekOffset } = binConfig;
                 const adjustedWeek = weeksSinceReference - weekOffset;
+                
+                if (debugEnabled) {
+                    console.log(`  🗑️ ${binType}: interval=${interval}, weekOffset=${weekOffset}, adjustedWeek=${adjustedWeek}, collected=${adjustedWeek >= 0 && adjustedWeek % interval === 0}`);
+                }
                 
                 // Check if this bin is collected this week
                 if (adjustedWeek >= 0 && adjustedWeek % interval === 0) {
@@ -50,15 +93,30 @@ function getNextCollection(config, zoneFeature, fromDate = null) {
                 }
             });
             
+            if (debugEnabled) {
+                console.log(`  ✅ Bins for this day: [${collectedBins.join(', ')}]`);
+            }
+            
             // If any bins are collected on this day, this is our next collection
             if (collectedBins.length > 0) {
-                return {
+                const result = {
                     date: searchDate.clone(),
                     bins: collectedBins,
                     isToday: searchDate.isSame(startMoment, 'day'),
-                    timeText: getTimeText(searchDate, startMoment),
+                    timeText: getTimeText(searchDate, startMoment, config),
                     dateText: searchDate.format('MMMM Do YYYY')
                 };
+                
+                if (debugEnabled) {
+                    console.log('🎯 Next collection found:', {
+                        date: result.date.format('YYYY-MM-DD dddd'),
+                        bins: result.bins,
+                        isToday: result.isToday,
+                        timeText: result.timeText
+                    });
+                }
+                
+                return result;
             }
         }
         
@@ -66,28 +124,39 @@ function getNextCollection(config, zoneFeature, fromDate = null) {
         searchDate.add(1, 'day');
     }
     
+    if (debugEnabled) {
+        console.log('❌ No collection found in next 14 days');
+    }
     return null; // No collection found in next 14 days
 }
 
 /**
- * Get human-readable time text (Today, Tomorrow, Monday, etc.)
+ * Get human-readable time text with bin-out reminders
  * @param {moment.Moment} collectionDate - The collection date
  * @param {moment.Moment} currentDate - Current date
+ * @param {Object} config - Configuration object with cutoff hour
  * @returns {string} Human-readable time text
  */
-function getTimeText(collectionDate, currentDate) {
+function getTimeText(collectionDate, currentDate, config = {}) {
     // Compare start of days to get accurate day difference
     const collectionDay = collectionDate.clone().startOf('day');
     const currentDay = currentDate.clone().startOf('day');
     const diffDays = collectionDay.diff(currentDay, 'days');
     
     if (diffDays === 0) {
+        // Collection is today - always show "Today"
         return 'Today';
     } else if (diffDays === 1) {
-        return 'Tomorrow';
+        // Collection is tomorrow - remind to put bins out tonight
+        return 'Put your bins out tonight';
     } else if (diffDays <= 6) {
-        return collectionDate.format('dddd'); // Day name
+        // Collection is this week - show day name
+        return collectionDate.format('dddd');
+    } else if (diffDays === 7) {
+        // Collection is exactly next week - show "Next {dayname}"
+        return `Next ${collectionDate.format('dddd')}`;
     } else {
+        // Collection is further away - show date
         return collectionDate.format('MMM Do');
     }
 }
@@ -231,8 +300,53 @@ function debugBinCalculation() {
     }
 }
 
+/**
+ * Test function to understand current collection logic
+ */
+function testCollectionLogic() {
+    console.log('🧪 Testing Collection Logic');
+    console.log('========================');
+    
+    if (!window.app || !window.app.config || !window.app.currentZoneFeature) {
+        console.log('❌ App not ready. Please wait for location to be detected.');
+        return;
+    }
+    
+    const config = window.app.config;
+    const zoneFeature = window.app.currentZoneFeature;
+    const now = getCurrentMoment(config.timezone);
+    
+    console.log('Current time:', now.format('YYYY-MM-DD HH:mm:ss dddd'));
+    console.log('Current weekday:', now.isoWeekday());
+    console.log('Collection weekday:', zoneFeature.properties.collectionDay);
+    console.log('Cutoff hour:', config.collectionCutoffHour || 18);
+    console.log('Current hour:', now.hour());
+    
+    const isAfterCutoff = now.hour() >= (config.collectionCutoffHour || 18);
+    const isTodayCollectionDay = now.isoWeekday() === zoneFeature.properties.collectionDay;
+    
+    console.log('Is today collection day?', isTodayCollectionDay);
+    console.log('Is after cutoff?', isAfterCutoff);
+    console.log('Should skip today?', isTodayCollectionDay && isAfterCutoff);
+    
+    // Test the next collection function
+    const nextCollection = getNextCollection(config, zoneFeature, now);
+    if (nextCollection) {
+        console.log('Next collection:', {
+            date: nextCollection.date.format('YYYY-MM-DD dddd'),
+            bins: nextCollection.bins,
+            isToday: nextCollection.isToday,
+            timeText: nextCollection.timeText,
+            dateText: nextCollection.dateText
+        });
+    } else {
+        console.log('No next collection found');
+    }
+}
+
 // Make it available globally
 window.debugBinCalculation = debugBinCalculation;
+window.testCollectionLogic = testCollectionLogic;
 
 // Export functions for use in other modules
 if (typeof module !== 'undefined' && module.exports) {

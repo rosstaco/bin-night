@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <base href="./">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Bin Nights - Collection Reminder</title>
     <meta name="description" content="Never miss your bin collection day again. Get reminders for rubbish, recycling, and green waste collection.">
@@ -121,10 +122,64 @@
     
     <!-- Service Worker Registration -->
     <script>
+        // iOS PWA Navigation Fix
+        function fixiOSPWANavigation() {
+            // Check if we're running as a PWA
+            const isStandalone = window.navigator.standalone === true || 
+                               (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+            
+            // Check if we're on iOS
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
+            if (isStandalone && isIOS) {
+                console.log('Running as iOS PWA');
+                
+                // Get the current URL
+                const currentUrl = window.location.href;
+                const currentPath = window.location.pathname;
+                
+                // Check if we have a service worker that might know the correct path
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    // Let the service worker handle navigation
+                    return;
+                }
+                
+                // If we're at the root but the manifest was loaded from a subfolder,
+                // we need to redirect to the correct path
+                const manifestLink = document.querySelector('link[rel="manifest"]');
+                if (manifestLink) {
+                    const manifestHref = manifestLink.getAttribute('href');
+                    const manifestUrl = new URL(manifestHref, window.location.href);
+                    const expectedBasePath = manifestUrl.pathname.replace('/manifest.json', '/');
+                    
+                    if (currentPath === '/' && expectedBasePath !== '/') {
+                        console.log('iOS PWA: Redirecting from root to', expectedBasePath);
+                        window.location.replace(expectedBasePath);
+                        return;
+                    }
+                }
+                
+                // Alternative: Check if we can determine the correct path from the base tag
+                const baseTag = document.querySelector('base[href]');
+                if (baseTag && currentPath === '/') {
+                    const baseHref = baseTag.getAttribute('href');
+                    if (baseHref !== './' && baseHref !== '/') {
+                        console.log('iOS PWA: Redirecting from root to base href', baseHref);
+                        window.location.replace(baseHref);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        // Run the fix immediately
+        fixiOSPWANavigation();
+        
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/bin-nights/sw.js', {
-                    scope: '/bin-nights/'
+                // Use relative path for service worker registration
+                navigator.serviceWorker.register('./sw.js', {
+                    scope: './'
                 })
                     .then((registration) => {
                         console.log('SW registered: ', registration);
@@ -143,7 +198,7 @@
                                     if ('Notification' in window && Notification.permission === 'granted') {
                                         new Notification('Bin Nights Update', {
                                             body: 'A new version is available. Refresh to update.',
-                                            icon: '/icons/icon.svg'
+                                            icon: './icons/icon.svg'
                                         });
                                     }
                                 }
