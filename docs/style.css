@@ -52,6 +52,7 @@
     /* Bin colors */
     --rubbish-color: #dc2626;
     --recycling-color: #eab308;
+    --organics-color: #16a34a;
     --green-color: #16a34a;
     --glass-color: #7c3aed;
     
@@ -302,7 +303,7 @@ body {
 .bin-icon.recycling svg {
     filter: hue-rotate(180deg) saturate(1.2) brightness(1.1);
 }
-
+.bin-icon.organics svg,
 .bin-icon.green svg {
     filter: hue-rotate(0deg) saturate(1.0) brightness(1.0);
 }
@@ -1031,6 +1032,7 @@ input:focus {
   filter: sepia(100%) saturate(400%) hue-rotate(25deg) brightness(1.4);
   /* More yellow tint with preserved gradients */
 }
+.bin.organics .bin-icon::before, 
 .bin.green .bin-icon::before { 
   filter: sepia(100%) saturate(300%) hue-rotate(80deg) brightness(1.2);
   /* Brighter green tint with preserved gradients */

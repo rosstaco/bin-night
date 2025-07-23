@@ -1,0 +1,14 @@
+{
+  "city": "Yarra",
+  "fullName": "City of Yarra",
+  "timezone": "Australia/Melbourne",
+  "startDate": "2025-07-01",
+  "collectionCutoffHour": 18,
+  "bounds": {
+    "description": "Geographic bounds for the City of Yarra service area",
+    "south": -37.85,
+    "north": -37.75,
+    "west": 144.95,
+    "east": 145.05
+  }
+}
