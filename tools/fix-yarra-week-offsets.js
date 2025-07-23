@@ -4,8 +4,8 @@
  * Fix Yarra week offsets based on actual collection dates
  * 
  * Based on the first glass collection dates provided:
- * - Week 0 (July 1-7): Zones 1, 2, 3, 5, 7, 9 → weekOffset: 0
- * - Week 1 (July 8-14): Zones 4, 6, 8, 10 → weekOffset: 1
+ * - Week 0 (July 1-7): Zones 2, 3, 5, 7, 9 → weekOffset: 0
+ * - Week 1 (July 8-14): Zones 1, 4, 6, 8, 10 → weekOffset: 1
  */
 
 const fs = require('fs');
@@ -14,7 +14,6 @@ const path = require('path');
 // Week offset mapping based on actual collection dates
 const WEEK_OFFSETS = {
     // Week 0 zones (first glass collection July 1-7)
-    '1': 0,   // July 7
     '2': 0,   // July 7  
     '3': 0,   // July 1
     '5': 0,   // July 2
@@ -22,6 +21,7 @@ const WEEK_OFFSETS = {
     '9': 0,   // July 4
     
     // Week 1 zones (first glass collection July 8-14)
+    '1': 1,   // July 14
     '4': 1,   // July 8
     '6': 1,   // July 9
     '8': 1,   // July 10
